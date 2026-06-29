@@ -9,7 +9,8 @@ import '../../../models/support_ticket.dart';
 import '../../../models/product.dart';
 
 class DashboardTab extends StatefulWidget {
-  const DashboardTab({super.key});
+  final Function(int)? onTabChanged;
+  const DashboardTab({super.key, this.onTabChanged});
 
   @override
   State<DashboardTab> createState() => _DashboardTabState();
@@ -231,10 +232,14 @@ class _DashboardTabState extends State<DashboardTab> {
             mainAxisSpacing: 20,
             childAspectRatio: width > 1200 ? 1.6 : 2.0,
             children: [
-              _buildMetricCard('Total Users', '$_totalUsers', Icons.people_rounded, Colors.purpleAccent),
-              _buildMetricCard('Active Users', '$_activeUsers', Icons.person_add_alt_1_rounded, Colors.pinkAccent),
-              _buildMetricCard('Total Categories', '$_categoryCount', Icons.category_rounded, const Color(0xFFDA1B60)),
-              _buildMetricCard('Total Products', '$_productCount', Icons.shopping_basket_rounded, const Color(0xFFFF8A00)),
+              _buildMetricCard('Total Users', '$_totalUsers', Icons.people_rounded, Colors.purpleAccent,
+                  onTap: () => widget.onTabChanged?.call(8)),
+              _buildMetricCard('Active Users', '$_activeUsers', Icons.person_add_alt_1_rounded, Colors.pinkAccent,
+                  onTap: () => widget.onTabChanged?.call(8)),
+              _buildMetricCard('Total Categories', '$_categoryCount', Icons.category_rounded, const Color(0xFFDA1B60),
+                  onTap: () => widget.onTabChanged?.call(1)),
+              _buildMetricCard('Total Products', '$_productCount', Icons.shopping_basket_rounded, const Color(0xFFFF8A00),
+                  onTap: () => widget.onTabChanged?.call(3)),
             ],
           ),
           const SizedBox(height: 28),
@@ -253,10 +258,14 @@ class _DashboardTabState extends State<DashboardTab> {
             mainAxisSpacing: 20,
             childAspectRatio: width > 1200 ? 1.6 : 2.0,
             children: [
-              _buildMetricCard('Total Orders', '$_totalOrders', Icons.shopping_cart_rounded, Colors.blueAccent),
-              _buildMetricCard('Pending Orders', '$_pendingOrders', Icons.hourglass_empty_rounded, Colors.orangeAccent),
-              _buildMetricCard('Completed Orders', '$_completedOrders', Icons.check_circle_outline_rounded, Colors.lightGreenAccent),
-              _buildMetricCard('Total Revenue', '₹${_totalRevenue.toStringAsFixed(0)}', Icons.currency_rupee_rounded, Colors.greenAccent),
+              _buildMetricCard('Total Orders', '$_totalOrders', Icons.shopping_cart_rounded, Colors.blueAccent,
+                  onTap: () => widget.onTabChanged?.call(9)),
+              _buildMetricCard('Pending Orders', '$_pendingOrders', Icons.hourglass_empty_rounded, Colors.orangeAccent,
+                  onTap: () => widget.onTabChanged?.call(9)),
+              _buildMetricCard('Completed Orders', '$_completedOrders', Icons.check_circle_outline_rounded, Colors.lightGreenAccent,
+                  onTap: () => widget.onTabChanged?.call(9)),
+              _buildMetricCard('Total Revenue', '₹${_totalRevenue.toStringAsFixed(0)}', Icons.currency_rupee_rounded, Colors.greenAccent,
+                  onTap: () => widget.onTabChanged?.call(10)),
             ],
           ),
           const SizedBox(height: 28),
@@ -308,8 +317,10 @@ class _DashboardTabState extends State<DashboardTab> {
             mainAxisSpacing: 20,
             childAspectRatio: width > 1200 ? 3.0 : 4.0,
             children: [
-              _buildMetricCard('Today\'s Revenue', '₹${_todayRevenue.toStringAsFixed(0)}', Icons.today_rounded, Colors.amberAccent),
-              _buildMetricCard('Monthly Revenue', '₹${_monthlyRevenue.toStringAsFixed(0)}', Icons.trending_up_rounded, Colors.tealAccent),
+              _buildMetricCard('Today\'s Revenue', '₹${_todayRevenue.toStringAsFixed(0)}', Icons.today_rounded, Colors.amberAccent,
+                  onTap: () => widget.onTabChanged?.call(10)),
+              _buildMetricCard('Monthly Revenue', '₹${_monthlyRevenue.toStringAsFixed(0)}', Icons.trending_up_rounded, Colors.tealAccent,
+                  onTap: () => widget.onTabChanged?.call(10)),
             ],
           ),
           const SizedBox(height: 40),
@@ -551,43 +562,49 @@ class _DashboardTabState extends State<DashboardTab> {
     );
   }
 
-  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
+  Widget _buildMetricCard(String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 22),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
-                child: Icon(icon, color: color, size: 22),
               ),
             ],
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -709,11 +726,15 @@ class _DashboardTabState extends State<DashboardTab> {
         ? ((_totalSupportTickets - _pendingSupportTickets) / _totalSupportTickets) * 100
         : 100.0;
 
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return GestureDetector(
+      onTap: () => widget.onTabChanged?.call(11),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GlassCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -764,7 +785,9 @@ class _DashboardTabState extends State<DashboardTab> {
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildStatRow(String label, String val, Color valColor) {
@@ -815,6 +838,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     'Replenish inventory to restore sales.',
                     Icons.inventory_2_outlined,
                     Colors.orangeAccent,
+                    onTap: () => widget.onTabChanged?.call(3),
                   ),
                 if (_blockedUsers > 0)
                   _buildAlertTile(
@@ -822,6 +846,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     'Users currently blocked from login.',
                     Icons.block_outlined,
                     Colors.redAccent,
+                    onTap: () => widget.onTabChanged?.call(8),
                   ),
                 if (_failedTransactions > 0)
                   _buildAlertTile(
@@ -829,6 +854,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     'Failed gateways logs require checking.',
                     Icons.error_outline_rounded,
                     Colors.amberAccent,
+                    onTap: () => widget.onTabChanged?.call(10),
                   ),
               ],
             ),
@@ -844,25 +870,29 @@ class _DashboardTabState extends State<DashboardTab> {
     );
   }
 
-  Widget _buildAlertTile(String title, String description, IconData icon, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 2),
-                Text(description, style: const TextStyle(fontSize: 10, color: Colors.white38)),
-              ],
+  Widget _buildAlertTile(String title, String description, IconData icon, Color color, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(description, style: const TextStyle(fontSize: 10, color: Colors.white38)),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

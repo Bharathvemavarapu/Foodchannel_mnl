@@ -69,7 +69,13 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
   Widget _buildActiveTab() {
     switch (_selectedTabIndex) {
       case 0:
-        return const DashboardTab();
+        return DashboardTab(
+          onTabChanged: (index) {
+            setState(() {
+              _selectedTabIndex = index;
+            });
+          },
+        );
       case 1:
         return const CategoriesTab();
       case 2:
@@ -95,7 +101,13 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
       case 12:
         return const NotificationsTab();
       default:
-        return const DashboardTab();
+        return DashboardTab(
+          onTabChanged: (index) {
+            setState(() {
+              _selectedTabIndex = index;
+            });
+          },
+        );
     }
   }
 
