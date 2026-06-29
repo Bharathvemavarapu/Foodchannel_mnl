@@ -176,15 +176,17 @@ class _HeroTabState extends State<HeroTab> {
                               padding: EdgeInsets.zero,
                               child: Row(
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
-                                    child: AspectRatio(
-                                      aspectRatio: 16 / 9,
-                                      child: Image.network(
-                                        item.imageUrl,
-                                        width: 220,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
+                                  SizedBox(
+                                    width: 220,
+                                    child: ClipRRect(
+                                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+                                      child: AspectRatio(
+                                        aspectRatio: 16 / 9,
+                                        child: Image.network(
+                                          item.imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
+                                        ),
                                       ),
                                     ),
                                   ),

@@ -7,6 +7,7 @@ class UserModel {
   final DateTime lastLogin;
   final bool isActive;
   final String phone;
+  final String address;
 
   UserModel({
     required this.uid,
@@ -17,6 +18,7 @@ class UserModel {
     required this.lastLogin,
     required this.isActive,
     required this.phone,
+    this.address = '',
   });
 
   factory UserModel.fromJson(String uid, Map<String, dynamic> json) {
@@ -33,6 +35,7 @@ class UserModel {
           : DateTime.now(),
       isActive: json['isActive'] ?? true,
       phone: json['phone'] ?? '',
+      address: json['address'] ?? '',
     );
   }
 
@@ -45,6 +48,7 @@ class UserModel {
       'lastLogin': lastLogin.toIso8601String(),
       'isActive': isActive,
       'phone': phone,
+      'address': address,
     };
   }
 
@@ -56,6 +60,7 @@ class UserModel {
     DateTime? lastLogin,
     bool? isActive,
     String? phone,
+    String? address,
   }) {
     return UserModel(
       uid: uid,
@@ -66,6 +71,7 @@ class UserModel {
       lastLogin: lastLogin ?? this.lastLogin,
       isActive: isActive ?? this.isActive,
       phone: phone ?? this.phone,
+      address: address ?? this.address,
     );
   }
 }

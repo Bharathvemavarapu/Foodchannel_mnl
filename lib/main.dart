@@ -14,7 +14,7 @@ import 'views/auth/register_view.dart';
 import 'views/auth/forgot_password_view.dart';
 import 'views/auth/email_verify_view.dart';
 import 'views/admin/admin_dashboard_view.dart';
-import 'views/user/user_home_view.dart';
+import 'views/user/user_bottom_nav.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +62,7 @@ class MyApp extends StatelessWidget {
         '/forgot': (context) => const ForgotPasswordView(),
         '/verify': (context) => const EmailVerifyView(),
         '/admin': (context) => const AdminDashboardView(),
-        '/user': (context) => const UserHomeView(),
+        '/user': (context) => const UserBottomNav(),
       },
     );
   }
@@ -128,14 +128,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
               return const AdminDashboardView();
             }
             if (profile == null) {
-              // Fallback to normal UserHomeView if user data doesn't exist in RTDB yet
-              return const UserHomeView();
+              // Fallback to UserBottomNav if user data doesn't exist in RTDB yet
+              return const UserBottomNav();
             }
 
             if (profile.role == 'admin') {
               return const AdminDashboardView();
             } else {
-              return const UserHomeView();
+              return const UserBottomNav();
             }
           },
         );
@@ -254,7 +254,7 @@ class _ConnectionCheckScreenState extends State<ConnectionCheckScreen> {
     });
 
     try {
-      final token = 'YOUR_MAPBOX_TOKEN';
+      final token = 'pk.eyJ1IjoicGF2YW5rdW1hcnN3YW15IiwiYSI6ImNtNnc1c3ZpdTBkdGgyanM5b25rN2ZqcncifQ.Ls1e2W6rx3apoBsStWa5Ow';
       final response = await http.get(Uri.parse('https://api.mapbox.com/geocoding/v5/mapbox.places/India.json?access_token=$token&limit=1'));
       if (response.statusCode == 200) {
         if (mounted) {

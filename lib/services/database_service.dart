@@ -10,6 +10,9 @@ import '../models/order.dart';
 import '../models/payment.dart';
 import '../models/support_ticket.dart';
 import '../models/notification.dart';
+import '../models/address.dart';
+import '../models/review.dart';
+import '../models/promo_code.dart';
 
 class DatabaseService {
   static const String dbUrl = "https://foodchannelmnl-default-rtdb.firebaseio.com";
@@ -577,5 +580,452 @@ class DatabaseService {
     } catch (e) {
       print("Pre-population error: $e");
     }
+  }
+
+  // --- STREAM METHODS FOR USER HOME PAGE & BROWSING ---
+  static Stream<List<HeroImageModel>> getHeroImagesStream() async* {
+    try {
+      yield await getHeroImages();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        return await getHeroImages();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<BannerModel>> getBannersStream() async* {
+    try {
+      yield await getBanners();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        return await getBanners();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<CategoryModel>> getCategoriesStream() async* {
+    try {
+      yield await getCategories();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        return await getCategories();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<SubCategoryModel>> getSubCategoriesStream(String categoryId) async* {
+    try {
+      final list = await getSubCategories();
+      yield list.where((sub) => sub.categoryId == categoryId).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final subcats = await getSubCategories();
+        return subcats.where((sub) => sub.categoryId == categoryId).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<ProductModel>> getFeaturedProductsStream() async* {
+    try {
+      final list = await getProducts();
+      yield list.where((p) => p.isFeatured && p.isAvailable).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final prods = await getProducts();
+        return prods.where((p) => p.isFeatured && p.isAvailable).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<ProductModel>> getTrendingProductsStream() async* {
+    try {
+      final list = await getProducts();
+      yield list.where((p) => p.isTrending && p.isAvailable).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final prods = await getProducts();
+        return prods.where((p) => p.isTrending && p.isAvailable).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<ProductModel>> getProductsByCategoryStream(String categoryId) async* {
+    try {
+      final list = await getProducts();
+      yield list.where((p) => p.categoryId == categoryId && p.isAvailable).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final prods = await getProducts();
+        return prods.where((p) => p.categoryId == categoryId && p.isAvailable).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<ProductModel>> getProductsBySubCategoryStream(String subCategoryId) async* {
+    try {
+      final list = await getProducts();
+      yield list.where((p) => p.subCategoryId == subCategoryId && p.isAvailable).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final prods = await getProducts();
+        return prods.where((p) => p.subCategoryId == subCategoryId && p.isAvailable).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<ProductModel>> searchProductsStream(String query) async* {
+    try {
+      final list = await getProducts();
+      final q = query.toLowerCase().trim();
+      if (q.isEmpty) {
+        yield list;
+      } else {
+        yield list.where((p) => p.name.toLowerCase().contains(q) || p.description.toLowerCase().contains(q)).toList();
+      }
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final prods = await getProducts();
+        final q = query.toLowerCase().trim();
+        if (q.isEmpty) return prods;
+        return prods.where((p) => p.name.toLowerCase().contains(q) || p.description.toLowerCase().contains(q)).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  // --- USER PROFILE, CART, WISHLIST, AND ORDER ENDPOINTS ---
+  static Future<Map<String, int>> getUserCart(String uid) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/users/$uid/cart.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return {};
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    return data.map((key, value) => MapEntry(key, value as int));
+  }
+
+  static Future<void> saveCartItem(String uid, String productId, int quantity) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/cart/$productId.json?auth=$token');
+    await http.put(url, body: jsonEncode(quantity));
+  }
+
+  static Future<void> removeCartItem(String uid, String productId) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/cart/$productId.json?auth=$token');
+    await http.delete(url);
+  }
+
+  static Future<void> clearCart(String uid) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/cart.json?auth=$token');
+    await http.delete(url);
+  }
+
+  static Stream<Map<String, int>> getUserCartStream(String uid) async* {
+    try {
+      yield await getUserCart(uid);
+    } catch (_) {
+      yield {};
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getUserCart(uid);
+      } catch (_) {
+        return {};
+      }
+    });
+  }
+
+  static Future<List<String>> getUserWishlist(String uid) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/users/$uid/wishlist.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return [];
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    final List<String> list = [];
+    data.forEach((key, value) {
+      if (value == true) list.add(key);
+    });
+    return list;
+  }
+
+  static Future<void> toggleWishlist(String uid, String productId) async {
+    final token = await _getToken();
+    final current = await getUserWishlist(uid);
+    final url = Uri.parse('$dbUrl/users/$uid/wishlist/$productId.json?auth=$token');
+    if (current.contains(productId)) {
+      await http.delete(url);
+    } else {
+      await http.put(url, body: jsonEncode(true));
+    }
+  }
+
+  static Stream<List<String>> getUserWishlistStream(String uid) async* {
+    try {
+      yield await getUserWishlist(uid);
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getUserWishlist(uid);
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Stream<List<OrderModel>> getUserOrdersStream(String uid) async* {
+    try {
+      final orders = await getOrders();
+      yield orders.where((o) => o.customerId == uid).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 20)).asyncMap((_) async {
+      try {
+        final orders = await getOrders();
+        return orders.where((o) => o.customerId == uid).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Future<void> updateUserProfileFields(String uid, Map<String, dynamic> data) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid.json?auth=$token');
+    final response = await http.patch(url, body: jsonEncode(data));
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update user profile fields: ${response.body}');
+    }
+  }
+
+  static Future<UserModel?> getUserProfile(String uid) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/users/$uid.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return null;
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    return UserModel.fromJson(uid, data);
+  }
+
+  static Stream<UserModel?> getUserProfileStream(String uid) async* {
+    try {
+      yield await getUserProfile(uid);
+    } catch (_) {
+      yield null;
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getUserProfile(uid);
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+
+  // --- USER ADDRESSES ENDPOINTS ---
+  static Future<List<UserAddressModel>> getUserAddresses(String uid) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/users/$uid/addresses.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return [];
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    final List<UserAddressModel> list = [];
+    data.forEach((key, value) {
+      list.add(UserAddressModel.fromJson(key, Map<String, dynamic>.from(value)));
+    });
+    return list;
+  }
+
+  static Stream<List<UserAddressModel>> getUserAddressesStream(String uid) async* {
+    try {
+      yield await getUserAddresses(uid);
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getUserAddresses(uid);
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Future<void> addUserAddress(String uid, UserAddressModel address) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/addresses/${address.id}.json?auth=$token');
+    final response = await http.put(url, body: jsonEncode(address.toJson()));
+    if (response.statusCode != 200) {
+      throw Exception('Failed to add address');
+    }
+  }
+
+  static Future<void> deleteUserAddress(String uid, String addressId) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/addresses/$addressId.json?auth=$token');
+    final response = await http.delete(url);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete address');
+    }
+  }
+
+  // --- USER NOTIFICATIONS ENDPOINTS ---
+  static Stream<List<NotificationModel>> getUserNotificationsStream(String uid) async* {
+    try {
+      final notifs = await getNotifications();
+      yield notifs.where((n) => n.type == 'All Users' || n.targetUserIds.contains(uid)).toList();
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        final notifs = await getNotifications();
+        return notifs.where((n) => n.type == 'All Users' || n.targetUserIds.contains(uid)).toList();
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Future<List<String>> getUserReadNotifications(String uid) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/users/$uid/readNotifications.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return [];
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    final List<String> list = [];
+    data.forEach((key, value) {
+      if (value == true) {
+        list.add(key);
+      }
+    });
+    return list;
+  }
+
+  static Stream<List<String>> getUserReadNotificationsStream(String uid) async* {
+    try {
+      yield await getUserReadNotifications(uid);
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getUserReadNotifications(uid);
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Future<void> markNotificationAsRead(String uid, String notifId) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/users/$uid/readNotifications/$notifId.json?auth=$token');
+    await http.put(url, body: jsonEncode(true));
+  }
+
+  // --- PRODUCT REVIEWS ENDPOINTS ---
+  static Future<List<ProductReviewModel>> getProductReviews(String productId) async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/reviews/$productId.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return [];
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    final List<ProductReviewModel> list = [];
+    data.forEach((key, value) {
+      list.add(ProductReviewModel.fromJson(key, Map<String, dynamic>.from(value)));
+    });
+    return list;
+  }
+
+  static Stream<List<ProductReviewModel>> getProductReviewsStream(String productId) async* {
+    try {
+      yield await getProductReviews(productId);
+    } catch (_) {
+      yield [];
+    }
+    yield* Stream.periodic(const Duration(seconds: 15)).asyncMap((_) async {
+      try {
+        return await getProductReviews(productId);
+      } catch (_) {
+        return [];
+      }
+    });
+  }
+
+  static Future<void> submitProductReview(String productId, ProductReviewModel review) async {
+    final token = await _getToken();
+    final url = Uri.parse('$dbUrl/reviews/$productId/${review.id}.json?auth=$token');
+    final response = await http.put(url, body: jsonEncode(review.toJson()));
+    if (response.statusCode != 200) {
+      throw Exception('Failed to submit review');
+    }
+  }
+
+  // --- PROMO CODES ENDPOINTS ---
+  static Future<List<PromoCodeModel>> getPromoCodes() async {
+    final token = await _getToken();
+    final response = await http.get(Uri.parse('$dbUrl/store/promoCodes.json?auth=$token'));
+    if (response.statusCode != 200 || response.body == 'null' || response.body.isEmpty) {
+      return [];
+    }
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    final List<PromoCodeModel> list = [];
+    data.forEach((key, value) {
+      list.add(PromoCodeModel.fromJson(key, Map<String, dynamic>.from(value)));
+    });
+    return list;
   }
 }

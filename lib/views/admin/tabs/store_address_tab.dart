@@ -15,7 +15,7 @@ class StoreAddressTab extends StatefulWidget {
 }
 
 class _StoreAddressTabState extends State<StoreAddressTab> {
-  static final String mapboxToken = 'YOUR_MAPBOX_TOKEN';
+  static const String mapboxToken = 'pk.eyJ1IjoicGF2YW5rdW1hcnN3YW15IiwiYSI6ImNtNnc1c3ZpdTBkdGgyanM5b25rN2ZqcncifQ.Ls1e2W6rx3apoBsStWa5Ow';
 
   final _formKey = GlobalKey<FormState>();
   final _searchController = TextEditingController();
