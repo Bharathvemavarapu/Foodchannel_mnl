@@ -575,7 +575,16 @@ class _DashboardTabState extends State<DashboardTab> {
                   color: color.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 22),
+                child: icon == Icons.currency_rupee_rounded
+                    ? Text(
+                        '₹',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      )
+                    : Icon(icon, color: color, size: 22),
               ),
             ],
           ),
