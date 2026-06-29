@@ -297,16 +297,7 @@ class _SearchViewState extends State<SearchView> {
         ),
         child: Row(
           children: [
-            icon == Icons.currency_rupee_rounded
-                ? const Text(
-                    '₹ ',
-                    style: TextStyle(
-                      color: Color(0xFFFF8A00),
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : Icon(icon, color: const Color(0xFFFF8A00), size: 14),
+            Icon(icon, color: const Color(0xFFFF8A00), size: 14),
             const SizedBox(width: 6),
             Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
             const SizedBox(width: 4),

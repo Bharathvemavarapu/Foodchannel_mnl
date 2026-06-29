@@ -53,7 +53,7 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
     SidebarGroup('CATALOG', [
       SidebarItem('Categories', Icons.category_rounded, 1),
       SidebarItem('Sub Categories', Icons.grid_view_rounded, 2),
-      SidebarItem('Products', Icons.shopping_bag_rounded, 3),
+      SidebarItem('Products', Icons.shopping_basket_rounded, 3),
     ]),
     SidebarGroup('STORE CONFIG', [
       SidebarItem('App Settings', Icons.settings_rounded, 4),

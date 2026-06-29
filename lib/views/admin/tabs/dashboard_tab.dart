@@ -234,7 +234,7 @@ class _DashboardTabState extends State<DashboardTab> {
               _buildMetricCard('Total Users', '$_totalUsers', Icons.people_rounded, Colors.purpleAccent),
               _buildMetricCard('Active Users', '$_activeUsers', Icons.person_add_alt_1_rounded, Colors.pinkAccent),
               _buildMetricCard('Total Categories', '$_categoryCount', Icons.category_rounded, const Color(0xFFDA1B60)),
-              _buildMetricCard('Total Products', '$_productCount', Icons.shopping_bag_rounded, const Color(0xFFFF8A00)),
+              _buildMetricCard('Total Products', '$_productCount', Icons.shopping_basket_rounded, const Color(0xFFFF8A00)),
             ],
           ),
           const SizedBox(height: 28),
@@ -575,16 +575,7 @@ class _DashboardTabState extends State<DashboardTab> {
                   color: color.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: icon == Icons.currency_rupee_rounded
-                    ? Text(
-                        '₹',
-                        style: TextStyle(
-                          color: color,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      )
-                    : Icon(icon, color: color, size: 22),
+                child: Icon(icon, color: color, size: 22),
               ),
             ],
           ),
