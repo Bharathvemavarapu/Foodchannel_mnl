@@ -439,36 +439,100 @@ class _AddEditProductDialogState extends State<_AddEditProductDialog> {
                   child: Column(
                     children: [
                       // Multi Image Picker Preview
-                      GestureDetector(
-                        onTap: _pickImages,
-                        child: Container(
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.02),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                          ),
-                          child: _pickedImages.isNotEmpty || _currentImageUrls.isNotEmpty
-                              ? ListView(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.all(8),
-                                  children: [
-                                    ..._currentImageUrls.map((url) => Padding(
-                                      padding: const EdgeInsets.only(right: 8.0),
-                                      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover)),
-                                    )),
-                                    ..._pickedImages.map((img) => Padding(
-                                      padding: const EdgeInsets.only(right: 8.0),
-                                      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(img.path, width: 80, height: 80, fit: BoxFit.cover)),
-                                    )),
-                                    Container(
+                      Container(
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.02),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        ),
+                        child: _pickedImages.isNotEmpty || _currentImageUrls.isNotEmpty
+                            ? ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.all(8),
+                                children: [
+                                  ..._currentImageUrls.map((url) => Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover),
+                                        ),
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _currentImageUrls.remove(url);
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.close_rounded,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )),
+                                  ..._pickedImages.map((img) => Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.network(img.path, width: 80, height: 80, fit: BoxFit.cover),
+                                        ),
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _pickedImages.remove(img);
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.close_rounded,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )),
+                                  GestureDetector(
+                                    onTap: _pickImages,
+                                    child: Container(
                                       width: 80,
                                       decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
                                       child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFFFF8A00)),
                                     ),
-                                  ],
-                                )
-                              : const Row(
+                                  ),
+                                ],
+                              )
+                            : GestureDetector(
+                                onTap: _pickImages,
+                                behavior: HitTestBehavior.opaque,
+                                child: const Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(Icons.add_a_photo_rounded, color: Color(0xFFFF8A00), size: 24),
@@ -476,7 +540,7 @@ class _AddEditProductDialogState extends State<_AddEditProductDialog> {
                                     Text('Upload Product Images (Multiple)', style: TextStyle(color: Colors.white60, fontSize: 13)),
                                   ],
                                 ),
-                        ),
+                              ),
                       ),
                       const SizedBox(height: 20),
                       

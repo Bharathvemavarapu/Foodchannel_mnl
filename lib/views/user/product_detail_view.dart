@@ -5,6 +5,7 @@ import '../../services/cart_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/persistent_cart_bar.dart';
 import 'package:intl/intl.dart';
 
 class ProductDetailView extends StatefulWidget {
@@ -28,6 +29,7 @@ class _ProductDetailViewState extends State<ProductDetailView> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF070412),
+      bottomNavigationBar: const PersistentCartBar(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0622),
         elevation: 0,

@@ -72,6 +72,7 @@ flutter:
   assets:
     - assets/Cinematic_brand_splash_animation_202606271855.mp4
     - assets/loading.json
+    - assets/hero_mockup.jpg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -415,30 +415,24 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
 
+    _videoController = VideoPlayerController.asset('assets/Cinematic_brand_splash_animation_202606271855.mp4');
+    
     if (kIsWeb) {
-      _isVideoInitialized = false;
-      _isVideoEnded = true;
-      _fadeController.forward();
-      Timer(const Duration(seconds: 2), () {
-        if (mounted) {
-          widget.onFinished();
-        }
-      });
-    } else {
-      _videoController = VideoPlayerController.asset('assets/Cinematic_brand_splash_animation_202606271855.mp4');
-      _videoController!.initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isVideoInitialized = true;
-          });
-          _videoController!.play();
-          _videoController!.addListener(_videoListener);
-        }
-      }).catchError((error) {
-        debugPrint("Error initializing video player: $error");
-        _onVideoEnded();
-      });
+      _videoController!.setVolume(0.0); // Muted to bypass browser autoplay restrictions
     }
+
+    _videoController!.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+        });
+        _videoController!.play();
+        _videoController!.addListener(_videoListener);
+      }
+    }).catchError((error) {
+      debugPrint("Error initializing video player: $error");
+      _onVideoEnded();
+    });
   }
 
   void _videoListener() {

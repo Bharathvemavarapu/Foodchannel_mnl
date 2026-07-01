@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/cart_service.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/persistent_cart_bar.dart';
 import 'user_home_view.dart';
 import 'categories_view.dart';
 import 'wishlist_view.dart';
@@ -8,6 +9,8 @@ import 'cart_view.dart';
 import 'profile_view.dart';
 
 class UserBottomNav extends StatefulWidget {
+  static final ValueNotifier<int> activeTabNotifier = ValueNotifier<int>(0);
+
   const UserBottomNav({super.key});
 
   @override
@@ -28,6 +31,8 @@ class _UserBottomNavState extends State<UserBottomNav> {
   @override
   void initState() {
     super.initState();
+    UserBottomNav.activeTabNotifier.value = 0;
+    UserBottomNav.activeTabNotifier.addListener(_onTabChanged);
     final user = AuthService.currentUser;
     if (user != null) {
       CartService.instance.initCartSync(user.uid);
@@ -35,15 +40,54 @@ class _UserBottomNavState extends State<UserBottomNav> {
   }
 
   @override
+  void dispose() {
+    UserBottomNav.activeTabNotifier.removeListener(_onTabChanged);
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (mounted) {
+      setState(() {
+        _selectedIndex = UserBottomNav.activeTabNotifier.value;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF070412),
-      body: _pages[_selectedIndex],
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: ListenableBuilder(
+              listenable: CartService.instance,
+              builder: (context, _) {
+                final totalItems = CartService.instance.totalItems;
+                final hasCartBar = totalItems > 0 && _selectedIndex != 3;
+                return Padding(
+                  padding: EdgeInsets.only(bottom: hasCartBar ? 76.0 : 0.0),
+                  child: _pages[_selectedIndex],
+                );
+              },
+            ),
+          ),
+          if (_selectedIndex != 3)
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: PersistentCartBar(),
+            ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF0D0622),
         indicatorColor: const Color(0xFFFF8A00).withValues(alpha: 0.25),
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          UserBottomNav.activeTabNotifier.value = index;
+        },
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.home_outlined),

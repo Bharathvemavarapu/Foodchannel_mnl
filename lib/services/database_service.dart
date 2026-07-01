@@ -466,13 +466,26 @@ class DatabaseService {
   static Future<void> checkAndPrepopulateDatabase() async {
     try {
       final categories = await getCategories();
-      if (categories.isNotEmpty) return;
+      final banners = await getBanners();
+      final hasCookware = categories.any((c) => c.name == 'Cookware');
+      final hasCookwareBanner = banners.any((b) => b.imageUrl.contains("photo-1506368249639-73a05d6f6488") || b.imageUrl.contains("photo-1547592180-85f173990554"));
+      
+      if (categories.isNotEmpty && !hasCookware && !hasCookwareBanner) return;
+
+      final token = await _getToken();
+
+      // Clear existing database store data if Cookware or Cookware banners are present
+      if (hasCookware || hasCookwareBanner || categories.isNotEmpty) {
+        await http.delete(Uri.parse('$dbUrl/store.json?auth=$token'));
+        await http.delete(Uri.parse('$dbUrl/banners.json?auth=$token'));
+        await http.delete(Uri.parse('$dbUrl/hero_images.json?auth=$token'));
+      }
 
       // 1. Save App Settings
       final settings = AppSettingsModel(
         name: "FoodChannel MNL",
         logoUrl: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200",
-        description: "Premium kitchen cookware, frying pans, and chef tools hub.",
+        description: "Craving something delicious? Order from Visakhapatnam's premium culinary kitchen hub.",
         contactNumber: "+91 98765 43210",
         email: "support@foodchannelmnl.com",
         whatsapp: "919876543210",
@@ -488,95 +501,261 @@ class DatabaseService {
       await saveStoreAddress(address);
 
       // 3. Add Banners
-      await addBanner("https://images.unsplash.com/photo-1506368249639-73a05d6f6488?w=800", true);
+      await addBanner("https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800", true);
+      await addBanner("https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800", true);
 
       // 4. Add Hero Slider Images
       final heroes = [
-        HeroImageModel(id: 'hero_1', imageUrl: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=1200", sortOrder: 0),
-        HeroImageModel(id: 'hero_2', imageUrl: "https://images.unsplash.com/photo-1547592180-85f173990554?w=1200", sortOrder: 1),
+        HeroImageModel(id: 'hero_1', imageUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200", sortOrder: 0),
+        HeroImageModel(id: 'hero_2', imageUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1200", sortOrder: 1),
       ];
       await saveHeroImages(heroes);
 
-      // 5. Add Categories (using push to generate keys)
-      final token = await _getToken();
-      
-      // Category 1: Cookware
+      // 5. Add Categories & Subcategories
       final catUrl = Uri.parse('$dbUrl/store/categories.json?auth=$token');
+      final subUrl = Uri.parse('$dbUrl/store/subcategories.json?auth=$token');
+
+      // Fast Food Category
       final cat1Response = await http.post(catUrl, body: jsonEncode({
-        'name': 'Cookware',
-        'imageUrl': 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=500',
+        'name': 'Fast Food',
+        'imageUrl': 'https://images.unsplash.com/photo-1561758033-d89a9ad46330?w=500',
         'createdDate': DateTime.now().toIso8601String(),
       }));
       final cat1Id = jsonDecode(cat1Response.body)['name'] as String;
 
-      // Category 2: Utensils
-      final cat2Response = await http.post(catUrl, body: jsonEncode({
-        'name': 'Utensils',
-        'imageUrl': 'https://images.unsplash.com/photo-1590794056226-79ef3a8147e1?w=500',
-        'createdDate': DateTime.now().toIso8601String(),
-      }));
-      final cat2Id = jsonDecode(cat2Response.body)['name'] as String;
-
-      // 6. Add Subcategories
-      final subUrl = Uri.parse('$dbUrl/store/subcategories.json?auth=$token');
-      
-      // Subcategory 1: Pans & Skillets (under Cookware)
       final sub1Response = await http.post(subUrl, body: jsonEncode({
         'categoryId': cat1Id,
-        'name': 'Pans & Skillets',
-        'imageUrl': 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=500',
+        'name': 'Pizzas & Burgers',
+        'imageUrl': 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
         'createdDate': DateTime.now().toIso8601String(),
       }));
       final sub1Id = jsonDecode(sub1Response.body)['name'] as String;
 
-      // Subcategory 2: Whisks & Spatulas (under Utensils)
+      // Indian Food Category
+      final cat2Response = await http.post(catUrl, body: jsonEncode({
+        'name': 'Indian Food',
+        'imageUrl': 'https://images.unsplash.com/photo-1585938338392-50a59970d8ee?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final cat2Id = jsonDecode(cat2Response.body)['name'] as String;
+
       final sub2Response = await http.post(subUrl, body: jsonEncode({
         'categoryId': cat2Id,
-        'name': 'Whisks & Spatulas',
-        'imageUrl': 'https://images.unsplash.com/photo-1590794056226-79ef3a8147e1?w=500',
+        'name': 'Biryani & Main Course',
+        'imageUrl': 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=500',
         'createdDate': DateTime.now().toIso8601String(),
       }));
       final sub2Id = jsonDecode(sub2Response.body)['name'] as String;
 
-      // 7. Add Products
-      final prod1 = ProductModel(
-        id: '',
-        categoryId: cat1Id,
-        subCategoryId: sub1Id,
-        name: 'Premium Cast Iron Skillet',
-        description: 'Pre-seasoned 10-inch cast iron skillet perfect for searing, baking, and grilling.',
-        price: 2499.0,
-        discountPrice: 1999.0,
-        stock: 15,
-        brand: 'Lodge',
-        sku: 'CI-SK-10',
-        isAvailable: true,
-        imageUrls: ['https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=500'],
-        isFeatured: true,
-        isTrending: true,
-        createdDate: DateTime.now(),
-      );
-      await addProduct(prod1);
+      // Street Food Category
+      final cat3Response = await http.post(catUrl, body: jsonEncode({
+        'name': 'Street Food',
+        'imageUrl': 'https://images.unsplash.com/photo-1601050690597-df056fb4ce78?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final cat3Id = jsonDecode(cat3Response.body)['name'] as String;
 
-      final prod2 = ProductModel(
-        id: '',
-        categoryId: cat2Id,
-        subCategoryId: sub2Id,
-        name: 'Stainless Steel Balloon Whisk',
-        description: 'Durable stainless steel wire balloon whisk for baking and mixing.',
-        price: 399.0,
-        discountPrice: 299.0,
-        stock: 50,
-        brand: 'Oxo',
-        sku: 'SS-WH-12',
-        isAvailable: true,
-        imageUrls: ['https://images.unsplash.com/photo-1590794056226-79ef3a8147e1?w=500'],
-        isFeatured: true,
-        isTrending: true,
-        createdDate: DateTime.now(),
-      );
-      await addProduct(prod2);
-      
+      final sub3Response = await http.post(subUrl, body: jsonEncode({
+        'categoryId': cat3Id,
+        'name': 'Rolls & Chaat',
+        'imageUrl': 'https://images.unsplash.com/photo-1601050690597-df056fb4ce78?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final sub3Id = jsonDecode(sub3Response.body)['name'] as String;
+
+      // Desserts Category
+      final cat4Response = await http.post(catUrl, body: jsonEncode({
+        'name': 'Desserts',
+        'imageUrl': 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final cat4Id = jsonDecode(cat4Response.body)['name'] as String;
+
+      final sub4Response = await http.post(subUrl, body: jsonEncode({
+        'categoryId': cat4Id,
+        'name': 'Cakes & Brownies',
+        'imageUrl': 'https://images.unsplash.com/photo-1564355808539-22fda35bed7e?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final sub4Id = jsonDecode(sub4Response.body)['name'] as String;
+
+      // Drinks Category
+      final cat5Response = await http.post(catUrl, body: jsonEncode({
+        'name': 'Drinks',
+        'imageUrl': 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final cat5Id = jsonDecode(cat5Response.body)['name'] as String;
+
+      final sub5Response = await http.post(subUrl, body: jsonEncode({
+        'categoryId': cat5Id,
+        'name': 'Shakes & Mojitos',
+        'imageUrl': 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500',
+        'createdDate': DateTime.now().toIso8601String(),
+      }));
+      final sub5Id = jsonDecode(sub5Response.body)['name'] as String;
+
+      // 6. Add Products (8 Hero Best Combinations)
+      final productsList = [
+        ProductModel(
+          id: '',
+          categoryId: cat1Id,
+          subCategoryId: sub1Id,
+          name: 'Cheese Burst Pizza',
+          description: 'Loaded with extra mozzarella cheese, fresh basil leaves, and tomato sauce.',
+          price: 399.0,
+          discountPrice: 299.0,
+          stock: 25,
+          brand: 'Pizza Hut',
+          sku: 'FF-PZ-CB',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat1Id,
+          subCategoryId: sub1Id,
+          name: 'Gourmet Burger',
+          description: 'Premium flame-grilled beef/veg burger with lettuce, tomatoes, cheddar cheese, and signature sauce.',
+          price: 249.0,
+          discountPrice: 199.0,
+          stock: 30,
+          brand: 'Burger King',
+          sku: 'FF-BG-GM',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat1Id,
+          subCategoryId: sub1Id,
+          name: 'Crispy Fried Chicken',
+          description: 'Golden, crispy, and crunchy fried chicken, seasoned with hot and spicy herbs.',
+          price: 499.0,
+          discountPrice: 449.0,
+          stock: 15,
+          brand: 'KFC',
+          sku: 'FF-CH-CR',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat2Id,
+          subCategoryId: sub2Id,
+          name: 'Chicken Dum Biryani',
+          description: 'Rich and aromatic Hyderabadi basmati rice biryani cooked with marinated chicken pieces.',
+          price: 349.0,
+          discountPrice: 299.0,
+          stock: 40,
+          brand: 'Behrouz',
+          sku: 'IN-BY-CK',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat3Id,
+          subCategoryId: sub3Id,
+          name: 'Shawarma Roll',
+          description: 'Tender garlic grilled chicken wrapped in soft flatbread with house sauce and pickles.',
+          price: 179.0,
+          discountPrice: 149.0,
+          stock: 50,
+          brand: 'Al Taza',
+          sku: 'SF-SH-RL',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1662116765994-4e4473e440b8?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat1Id,
+          subCategoryId: sub1Id,
+          name: 'French Fries',
+          description: 'Crispy salted classic french fries served with spicy tomato dip.',
+          price: 129.0,
+          discountPrice: 99.0,
+          stock: 100,
+          brand: 'McDonalds',
+          sku: 'FF-FR-CL',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500'],
+          isFeatured: true,
+          isTrending: false,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat5Id,
+          subCategoryId: sub5Id,
+          name: 'Cold Coffee Mojito',
+          description: 'Refreshing chilled cold drink soft blend beverage.',
+          price: 49.0,
+          discountPrice: 39.0,
+          stock: 150,
+          brand: 'Coca Cola',
+          sku: 'DK-SD-CC',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500'],
+          isFeatured: true,
+          isTrending: false,
+          createdDate: DateTime.now(),
+        ),
+        ProductModel(
+          id: '',
+          categoryId: cat4Id,
+          subCategoryId: sub4Id,
+          name: 'Fudgy Brownie Dessert',
+          description: 'Warm, gooey chocolate brownie cake piece topped with chocolate syrup.',
+          price: 149.0,
+          discountPrice: 119.0,
+          stock: 45,
+          brand: 'Warm Oven',
+          sku: 'DS-BW-CH',
+          isAvailable: true,
+          imageUrls: ['https://images.unsplash.com/photo-1564355808539-22fda35bed7e?w=500'],
+          isFeatured: true,
+          isTrending: true,
+          createdDate: DateTime.now(),
+        ),
+      ];
+
+      for (var prod in productsList) {
+        await addProduct(prod);
+      }
+
+      // 7. Prepopulate Active Promo Codes
+      await http.put(Uri.parse('$dbUrl/store/promoCodes/FIRST50.json?auth=$token'), body: jsonEncode({
+        'discountPercentage': 50.0,
+        'minOrderAmount': 199.0,
+        'isActive': true,
+      }));
+      await http.put(Uri.parse('$dbUrl/store/promoCodes/BINGE.json?auth=$token'), body: jsonEncode({
+        'discountPercentage': 20.0,
+        'minOrderAmount': 299.0,
+        'isActive': true,
+      }));
+      await http.put(Uri.parse('$dbUrl/store/promoCodes/FREEDEL.json?auth=$token'), body: jsonEncode({
+        'discountPercentage': 10.0,
+        'minOrderAmount': 99.0,
+        'isActive': true,
+      }));
+
     } catch (e) {
       print("Pre-population error: $e");
     }

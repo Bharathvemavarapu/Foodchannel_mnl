@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
 import '../../models/category.dart';
 import '../../models/product.dart';
-import '../../widgets/glass_card.dart';
-import '../../services/auth_service.dart';
-import 'product_detail_view.dart';
+import '../../widgets/product_card.dart';
+import '../../widgets/persistent_cart_bar.dart';
 import 'search_view.dart';
 
 class SubcategoriesView extends StatefulWidget {
@@ -25,6 +24,7 @@ class _SubcategoriesViewState extends State<SubcategoriesView> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF070412),
+      bottomNavigationBar: const PersistentCartBar(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0622),
         elevation: 0,
@@ -136,153 +136,7 @@ class _SubcategoriesViewState extends State<SubcategoriesView> {
                   ),
                   itemCount: products.length,
                   itemBuilder: (context, index) {
-                    final prod = products[index];
-                    final hasDiscount = prod.discountPrice > 0 && prod.discountPrice < prod.price;
-
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ProductDetailView(product: prod),
-                          ),
-                        );
-                      },
-                      child: GlassCard(
-                        padding: EdgeInsets.zero,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Product Image
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Image.network(
-                                    prod.imageUrls.isNotEmpty ? prod.imageUrls.first : '',
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Center(
-                                      child: Icon(Icons.broken_image, size: 40, color: Colors.white30),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 10,
-                                    right: 10,
-                                    child: StreamBuilder<List<String>>(
-                                      stream: DatabaseService.getUserWishlistStream(AuthService.currentUser?.uid ?? ''),
-                                      builder: (context, snapshot) {
-                                        final wishlist = snapshot.data ?? [];
-                                        final isWishlisted = wishlist.contains(prod.id);
-                                        return IconButton(
-                                          style: IconButton.styleFrom(
-                                            backgroundColor: Colors.black54,
-                                            padding: const EdgeInsets.all(6),
-                                          ),
-                                          icon: Icon(
-                                            isWishlisted ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                            color: isWishlisted ? Colors.redAccent : Colors.white70,
-                                            size: 18,
-                                          ),
-                                          onPressed: () {
-                                            final uid = AuthService.currentUser?.uid;
-                                            if (uid != null) {
-                                              DatabaseService.toggleWishlist(uid, prod.id);
-                                            }
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  if (hasDiscount)
-                                    Positioned(
-                                      top: 10,
-                                      left: 10,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFDA1B60),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: const Text(
-                                          'SALE',
-                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-
-                            // Details
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    prod.brand,
-                                    style: TextStyle(
-                                      color: const Color(0xFFFF8A00).withValues(alpha: 0.8),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    prod.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 10),
-
-                                  // Prices Row
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '₹${hasDiscount ? prod.discountPrice : prod.price}',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                                      ),
-                                      if (hasDiscount) ...[
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '₹${prod.price}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.white30,
-                                            decoration: TextDecoration.lineThrough,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        prod.isAvailable ? 'In Stock' : 'Out of Stock',
-                                        style: TextStyle(
-                                          color: prod.isAvailable ? Colors.green : Colors.redAccent,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        'SKU: ${prod.sku}',
-                                        style: const TextStyle(color: Colors.white30, fontSize: 10),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
+                    return ProductCard(product: products[index]);
                   },
                 );
               },
