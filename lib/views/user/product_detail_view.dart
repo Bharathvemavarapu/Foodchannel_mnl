@@ -7,6 +7,7 @@ import '../../services/database_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/persistent_cart_bar.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class ProductDetailView extends StatefulWidget {
   final ProductModel product;
@@ -34,6 +35,10 @@ class _ProductDetailViewState extends State<ProductDetailView> {
         backgroundColor: const Color(0xFF0D0622),
         elevation: 0,
         title: const Text('Product Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        actions: const [
+          CartIconButton(),
+          SizedBox(width: 12),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(

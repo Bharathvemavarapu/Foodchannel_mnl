@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/cloudinary_service.dart';
 import '../../services/cart_service.dart';
 import '../../models/user.dart';
 import '../auth/login_view.dart';
@@ -8,6 +10,9 @@ import '../../widgets/glass_card.dart';
 import 'orders_history_view.dart';
 import 'address_book_view.dart';
 import 'notifications_view.dart';
+import 'payment_modes_view.dart';
+import 'my_refunds_view.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -30,6 +35,57 @@ class _ProfileViewState extends State<ProfileView> {
     _phoneController.dispose();
     _addressController.dispose();
     super.dispose();
+  }
+
+  Future<void> _updateProfilePhoto() async {
+    final user = AuthService.currentUser;
+    if (user == null) return;
+
+    final picker = ImagePicker();
+    try {
+      final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (img != null) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(Color(0xFFFF8A00)),
+            ),
+          ),
+        );
+
+        final bytes = await img.readAsBytes();
+        final url = await CloudinaryService.uploadImage(bytes, img.name);
+
+        await DatabaseService.updateUserProfileFields(user.uid, {
+          'profileImage': url,
+        });
+
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loader
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile photo updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update profile photo: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _saveProfileChanges(String uid) async {
@@ -83,6 +139,10 @@ class _ProfileViewState extends State<ProfileView> {
         backgroundColor: const Color(0xFF0D0622),
         elevation: 0,
         title: const Text('My Profile', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+        actions: const [
+          CartIconButton(),
+          SizedBox(width: 12),
+        ],
       ),
       body: StreamBuilder<UserModel?>(
         stream: DatabaseService.getUserProfileStream(user.uid),
@@ -115,13 +175,42 @@ class _ProfileViewState extends State<ProfileView> {
                 GlassCard(
                   child: Column(
                     children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: const Color(0xFFFF8A00).withValues(alpha: 0.15),
-                        child: Text(
-                          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
-                          style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFFFF8A00)),
-                        ),
+                      Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 40,
+                            backgroundColor: const Color(0xFFFF8A00).withValues(alpha: 0.15),
+                            backgroundImage: _profile?.profileImage.isNotEmpty == true
+                                ? NetworkImage(_profile!.profileImage)
+                                : null,
+                            child: _profile?.profileImage.isEmpty == true || _profile?.profileImage == null
+                                ? Text(
+                                    displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
+                                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFFFF8A00)),
+                                  )
+                                : null,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: InkWell(
+                              onTap: _updateProfilePhoto,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFF8A00),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -161,12 +250,36 @@ class _ProfileViewState extends State<ProfileView> {
                 const SizedBox(height: 12),
                 _buildMenuTile(
                   icon: Icons.location_on_rounded,
-                  title: 'Manage Addresses',
+                  title: 'Saved Addresses',
                   subtitle: 'Add or update your shipping details',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const AddressBookView()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildMenuTile(
+                  icon: Icons.credit_card_rounded,
+                  title: 'Payment Modes',
+                  subtitle: 'Manage cards, wallets, and UPI accounts',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PaymentModesView()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildMenuTile(
+                  icon: Icons.currency_exchange_rounded,
+                  title: 'My Refunds',
+                  subtitle: 'Track status of your returned orders',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyRefundsView()),
                     );
                   },
                 ),

@@ -5,6 +5,7 @@ import '../../models/product.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/persistent_cart_bar.dart';
 import 'search_view.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class SubcategoriesView extends StatefulWidget {
   final CategoryModel category;
@@ -43,6 +44,7 @@ class _SubcategoriesViewState extends State<SubcategoriesView> {
               );
             },
           ),
+          const CartIconButton(),
           const SizedBox(width: 8),
         ],
       ),

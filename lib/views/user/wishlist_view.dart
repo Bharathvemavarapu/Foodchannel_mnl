@@ -3,6 +3,7 @@ import '../../models/product.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class WishlistView extends StatelessWidget {
   const WishlistView({super.key});
@@ -30,6 +31,10 @@ class WishlistView extends StatelessWidget {
         backgroundColor: const Color(0xFF0D0622),
         elevation: 0,
         title: const Text('My Wishlist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+        actions: const [
+          CartIconButton(),
+          SizedBox(width: 12),
+        ],
       ),
       body: StreamBuilder<List<String>>(
         stream: DatabaseService.getUserWishlistStream(user.uid),

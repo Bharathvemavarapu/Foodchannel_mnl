@@ -5,6 +5,8 @@ import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../widgets/glass_card.dart';
 import 'order_tracking_view.dart';
+import '../../services/cart_service.dart';
+import 'user_bottom_nav.dart';
 
 class OrdersHistoryView extends StatelessWidget {
   const OrdersHistoryView({super.key});
@@ -26,6 +28,72 @@ class OrdersHistoryView extends StatelessWidget {
         return Colors.redAccent;
       default:
         return Colors.white54;
+    }
+  }
+
+  Future<void> _handleReorder(BuildContext context, OrderModel order) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation(Color(0xFFFF8A00)),
+        ),
+      ),
+    );
+
+    try {
+      final catalog = await DatabaseService.getProducts();
+
+      int addedCount = 0;
+      for (var item in order.items) {
+        final productIndex = catalog.indexWhere((p) => p.id == item.productId);
+        if (productIndex >= 0) {
+          final product = catalog[productIndex];
+          if (product.isAvailable && product.stock > 0) {
+            CartService.instance.addToCart(product, quantity: item.quantity);
+            addedCount++;
+          }
+        }
+      }
+
+      if (context.mounted) Navigator.pop(context);
+
+      if (context.mounted) {
+        if (addedCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Successfully added $addedCount item(s) to your cart!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'VIEW CART',
+                textColor: Colors.white,
+                onPressed: () {
+                  UserBottomNav.activeTabNotifier.value = 3;
+                },
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not reorder. Some items might be out of stock or unavailable.'),
+              backgroundColor: Colors.orangeAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reorder: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
@@ -171,17 +239,27 @@ class OrdersHistoryView extends StatelessWidget {
                               'Order Status Tracking',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
                             ),
-                            TextButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => OrderTrackingView(orderId: order.id),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.map_rounded, size: 14, color: Color(0xFFFF8A00)),
-                              label: const Text('TRACK STATUS', style: TextStyle(color: Color(0xFFFF8A00), fontSize: 11, fontWeight: FontWeight.bold)),
+                            Row(
+                              children: [
+                                TextButton.icon(
+                                  onPressed: () => _handleReorder(context, order),
+                                  icon: const Icon(Icons.replay_rounded, size: 14, color: Color(0xFFFF8A00)),
+                                  label: const Text('REORDER', style: TextStyle(color: Color(0xFFFF8A00), fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => OrderTrackingView(orderId: order.id),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.map_rounded, size: 14, color: Color(0xFFFF8A00)),
+                                  label: const Text('TRACK STATUS', style: TextStyle(color: Color(0xFFFF8A00), fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
                             ),
                           ],
                         ),

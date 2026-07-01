@@ -3,6 +3,7 @@ import '../../services/database_service.dart';
 import '../../models/category.dart';
 import '../../widgets/glass_card.dart';
 import 'subcategories_view.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class CategoriesView extends StatelessWidget {
   const CategoriesView({super.key});
@@ -20,6 +21,10 @@ class CategoriesView extends StatelessWidget {
           'Shop Categories',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
+        actions: const [
+          CartIconButton(),
+          SizedBox(width: 12),
+        ],
       ),
       body: StreamBuilder<List<CategoryModel>>(
         stream: DatabaseService.getCategoriesStream(),

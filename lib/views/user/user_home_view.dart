@@ -1,8 +1,10 @@
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:web/web.dart' as web;
 import '../../models/app_settings.dart';
 import '../../models/product.dart';
+import '../../models/address.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_view.dart';
@@ -10,6 +12,7 @@ import '../../widgets/product_card.dart';
 import '../../widgets/add_to_cart_button.dart';
 import 'order_tracking_view.dart';
 import 'user_bottom_nav.dart';
+import '../../widgets/cart_icon_button.dart';
 
 class UserHomeView extends StatefulWidget {
   const UserHomeView({super.key});
@@ -26,17 +29,44 @@ class _UserHomeViewState extends State<UserHomeView> {
   final TextEditingController _locationSearchController = TextEditingController();
   String _searchQuery = '';
 
+  final ScrollController _hotDealsScrollController = ScrollController();
+  String _selectedLocationLabel = 'Work';
+  List<UserAddressModel> _savedAddresses = [];
+
   @override
   void initState() {
     super.initState();
     _loadStoreMeta();
+    _loadUserAddresses();
   }
 
   @override
   void dispose() {
     _locationSearchController.dispose();
     _scrollController.dispose();
+    _hotDealsScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserAddresses() async {
+    final user = AuthService.currentUser;
+    if (user != null) {
+      try {
+        final addresses = await DatabaseService.getUserAddresses(user.uid);
+        if (mounted) {
+          setState(() {
+            _savedAddresses = addresses;
+            final match = _savedAddresses.firstWhere(
+              (a) => a.title.toLowerCase() == _selectedLocationLabel.toLowerCase(),
+              orElse: () => UserAddressModel(id: '', title: '', recipientName: '', phone: '', fullAddress: ''),
+            );
+            if (match.fullAddress.isNotEmpty) {
+              _locationSearchController.text = match.fullAddress;
+            }
+          });
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadStoreMeta() async {
@@ -199,6 +229,8 @@ class _UserHomeViewState extends State<UserHomeView> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const CartIconButton(),
+                    const SizedBox(width: 12),
                     OutlinedButton.icon(
                       onPressed: _handleLogout,
                       icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 14),
@@ -326,27 +358,82 @@ class _UserHomeViewState extends State<UserHomeView> {
                                 ),
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              margin: const EdgeInsets.only(right: 8),
-                              decoration: const BoxDecoration(
-                                border: Border(left: BorderSide(color: Colors.black12, width: 1)),
+                            PopupMenuButton<String>(
+                              tooltip: 'Select Location Label',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: const BoxDecoration(
+                                  border: Border(left: BorderSide(color: Colors.black12, width: 1)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _selectedLocationLabel,
+                                      style: const TextStyle(
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const Icon(Icons.keyboard_arrow_down, color: Colors.black54, size: 18),
+                                  ],
+                                ),
                               ),
-                              child: const Row(
-                                children: [
-                                  Text("Work", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 13)),
-                                  Icon(Icons.keyboard_arrow_down, color: Colors.black54, size: 18),
-                                ],
-                              ),
+                              onSelected: (String label) {
+                                setState(() {
+                                  _selectedLocationLabel = label;
+                                  final match = _savedAddresses.firstWhere(
+                                    (a) => a.title.toLowerCase() == label.toLowerCase(),
+                                    orElse: () => UserAddressModel(id: '', title: '', recipientName: '', phone: '', fullAddress: ''),
+                                  );
+                                  if (match.fullAddress.isNotEmpty) {
+                                    _locationSearchController.text = match.fullAddress;
+                                  } else {
+                                    if (label == 'Home') {
+                                      _locationSearchController.text = '123 Main Street, Sector 4, Bangalore';
+                                    } else if (label == 'Work') {
+                                      _locationSearchController.text = 'Office Complex Phase 2, Whitefield, Bangalore';
+                                    } else {
+                                      _locationSearchController.text = '';
+                                    }
+                                  }
+                                });
+                              },
+                              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                const PopupMenuItem<String>(value: 'Home', child: Text('Home')),
+                                const PopupMenuItem<String>(value: 'Work', child: Text('Work')),
+                                const PopupMenuItem<String>(value: 'Office', child: Text('Office')),
+                                const PopupMenuItem<String>(value: 'Other', child: Text('Other')),
+                              ],
                             ),
                             ElevatedButton(
-                              onPressed: () {
+                              onPressed: () async {
                                 final text = _locationSearchController.text.trim();
                                 if (text.isNotEmpty) {
                                   setState(() {
                                     _searchQuery = text;
                                   });
                                   _scrollToFeatured();
+
+                                  // Persist to user profile database
+                                  final user = AuthService.currentUser;
+                                  if (user != null) {
+                                    try {
+                                      await DatabaseService.updateUserProfileFields(user.uid, {
+                                        'address': text,
+                                      });
+                                    } catch (_) {}
+                                  }
+
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Delivery location updated to: $text'),
+                                        backgroundColor: const Color(0xFFFF8A00),
+                                      ),
+                                    );
+                                  }
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -381,6 +468,16 @@ class _UserHomeViewState extends State<UserHomeView> {
                               title: "50% OFF",
                               subtitle: "On First Order",
                               color: const Color(0xFFFF8A00),
+                              onTap: () {
+                                Clipboard.setData(const ClipboardData(text: "FIRST50"));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Promo code "FIRST50" copied to clipboard! Apply it at checkout for 50% off.'),
+                                    backgroundColor: Color(0xFFFF8A00),
+                                  ),
+                                );
+                                _scrollToOffers();
+                              },
                             ),
                             const SizedBox(width: 12),
                             _buildPromoBadge(
@@ -388,6 +485,19 @@ class _UserHomeViewState extends State<UserHomeView> {
                               title: "Fast Delivery",
                               subtitle: "In 30-45 mins",
                               color: const Color(0xFFFFB300),
+                              onTap: () {
+                                setState(() {
+                                  _searchQuery = "KFC";
+                                  _locationSearchController.text = "KFC";
+                                });
+                                _scrollToFeatured();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Filtering by Fast Delivery (KFC, Pizza Hut, Burger King)!'),
+                                    backgroundColor: Color(0xFFFF8A00),
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(width: 12),
                             _buildPromoBadge(
@@ -395,6 +505,7 @@ class _UserHomeViewState extends State<UserHomeView> {
                               title: "Best Offers",
                               subtitle: "On All Orders",
                               color: const Color(0xFFDA1B60),
+                              onTap: _showPromoCodesDialog,
                             ),
                           ],
                         ),
@@ -620,11 +731,41 @@ class _UserHomeViewState extends State<UserHomeView> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Hot Deals 🔥', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Hot Deals 🔥', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFFFF8A00), size: 18),
+                                    onPressed: () {
+                                      _hotDealsScrollController.animateTo(
+                                        _hotDealsScrollController.offset - 320,
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOut,
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFFFF8A00), size: 18),
+                                    onPressed: () {
+                                      _hotDealsScrollController.animateTo(
+                                        _hotDealsScrollController.offset + 320,
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOut,
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 12),
                           SizedBox(
                             height: 180,
                             child: ListView.builder(
+                              controller: _hotDealsScrollController,
                               scrollDirection: Axis.horizontal,
                               itemCount: deals.length,
                               itemBuilder: (context, index) {
@@ -878,41 +1019,51 @@ class _UserHomeViewState extends State<UserHomeView> {
       ),
     );
   }
-  Widget _buildPromoBadge({required IconData icon, required String title, required String subtitle, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+  Widget _buildPromoBadge({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 16),
             ),
-            child: Icon(icon, color: Colors.white, size: 16),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10),
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -8,6 +8,7 @@ class UserModel {
   final bool isActive;
   final String phone;
   final String address;
+  final String profileImage;
 
   UserModel({
     required this.uid,
@@ -19,6 +20,7 @@ class UserModel {
     required this.isActive,
     required this.phone,
     this.address = '',
+    this.profileImage = '',
   });
 
   factory UserModel.fromJson(String uid, Map<String, dynamic> json) {
@@ -36,6 +38,7 @@ class UserModel {
       isActive: json['isActive'] ?? true,
       phone: json['phone'] ?? '',
       address: json['address'] ?? '',
+      profileImage: json['profileImage'] ?? '',
     );
   }
 
@@ -49,6 +52,7 @@ class UserModel {
       'isActive': isActive,
       'phone': phone,
       'address': address,
+      'profileImage': profileImage,
     };
   }
 
@@ -61,6 +65,7 @@ class UserModel {
     bool? isActive,
     String? phone,
     String? address,
+    String? profileImage,
   }) {
     return UserModel(
       uid: uid,
@@ -72,6 +77,7 @@ class UserModel {
       isActive: isActive ?? this.isActive,
       phone: phone ?? this.phone,
       address: address ?? this.address,
+      profileImage: profileImage ?? this.profileImage,
     );
   }
 }

@@ -38,8 +38,15 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _splashFinished = false;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +62,15 @@ class MyApp extends StatelessWidget {
           surface: Color(0xFF150A2E),
         ),
       ),
-      home: const AuthWrapper(),
+      home: _splashFinished
+          ? const AuthWrapper()
+          : SplashScreen(
+              onFinished: () {
+                setState(() {
+                  _splashFinished = true;
+                });
+              },
+            ),
       routes: {
         '/login': (context) => const LoginView(),
         '/register': (context) => const RegisterView(),
@@ -79,8 +94,6 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _splashFinished = false;
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -95,16 +108,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         final user = snapshot.data;
         if (user == null) {
-          // If logged out, display cinematic entrance animations before login screen
-          if (!_splashFinished) {
-            return ConnectionCheckScreen(
-              onFinished: () {
-                setState(() {
-                  _splashFinished = true;
-                });
-              },
-            );
-          }
           return const LoginView();
         }
 
@@ -481,15 +484,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           if (!_isVideoEnded)
             Center(
               child: _isVideoInitialized && _videoController != null
-                  ? SizedBox.expand(
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _videoController!.value.size.width,
-                          height: _videoController!.value.size.height,
-                          child: VideoPlayer(_videoController!),
-                        ),
-                      ),
+                  ? AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: VideoPlayer(_videoController!),
                     )
                   : const CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF8A00)),
