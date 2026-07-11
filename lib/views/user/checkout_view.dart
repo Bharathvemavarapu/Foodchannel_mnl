@@ -8,8 +8,11 @@ import '../../services/cart_service.dart';
 import '../../widgets/glass_card.dart';
 import 'address_book_view.dart';
 import 'payment_processing_view.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import '../../services/location_service.dart';
 import '../../models/promo_code.dart';
-
 class CheckoutView extends StatefulWidget {
   const CheckoutView({super.key});
 
@@ -24,9 +27,10 @@ class _CheckoutViewState extends State<CheckoutView> {
   final _addressController = TextEditingController();
   final _couponController = TextEditingController();
 
-  String _paymentMethod = 'COD';
+  String _paymentMethod = 'Cash on Delivery';
   UserAddressModel? _selectedAddress;
   bool _isLoading = true;
+  bool _isLoadingLocation = false;
   bool _isSubmitting = false;
   PaymentSettingsModel? _paymentSettings;
   PromoCodeModel? _appliedPromo;
@@ -64,7 +68,9 @@ class _CheckoutViewState extends State<CheckoutView> {
           _paymentSettings = settings;
           if (!settings.codEnabled) {
             // Find first enabled gateway
-            if (settings.razorpay.isEnabled) _paymentMethod = 'Razorpay';
+            if (settings.walletEnabled) _paymentMethod = 'Wallet';
+            else if (settings.upiEnabled) _paymentMethod = 'UPI';
+            else if (settings.razorpay.isEnabled) _paymentMethod = 'Razorpay';
             else if (settings.stripe.isEnabled) _paymentMethod = 'Stripe';
             else if (settings.phonepe.isEnabled) _paymentMethod = 'PhonePe';
             else if (settings.cashfree.isEnabled) _paymentMethod = 'Cashfree';
@@ -73,6 +79,49 @@ class _CheckoutViewState extends State<CheckoutView> {
       } catch (_) {}
     }
     setState(() => _isLoading = false);
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showErrorSnackBar('Location services are disabled. Please enable them.');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showErrorSnackBar('Location permissions are denied.');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showErrorSnackBar('Location permissions are permanently denied.');
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      final addressDetails = await LocationService.instance.reverseGeocode(position.latitude, position.longitude);
+
+      setState(() {
+        _addressController.text = addressDetails.fullAddress;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location found!'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      _showErrorSnackBar('Error getting location: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
+    }
   }
 
   Future<void> _applyPromoCode() async {
@@ -168,12 +217,12 @@ class _CheckoutViewState extends State<CheckoutView> {
     );
 
     // Check if COD or Online gateway
-    if (_paymentMethod == 'COD') {
+    if (_paymentMethod == 'Cash on Delivery') {
       setState(() => _isSubmitting = true);
       try {
         await DatabaseService.addOrder(newOrder);
         CartService.instance.clearCart();
-        _showSuccessDialog();
+        _showSuccessAnimation();
       } catch (e) {
         _showErrorSnackBar('Failed to place order: $e');
       } finally {
@@ -189,19 +238,29 @@ class _CheckoutViewState extends State<CheckoutView> {
             amount: totalAmount,
             orderId: orderId,
             onPaymentSuccess: (txnId) async {
+              if (mounted) {
+                Navigator.pop(context); // Close simulator immediately
+              }
+              setState(() => _isSubmitting = true); // Show loading spinner on checkout page
+
               try {
                 // 1. Save Transaction Log
-                final tx = PaymentTransactionModel(
-                  id: 'tx_${DateTime.now().millisecondsSinceEpoch}',
-                  orderId: orderId,
-                  customerName: recipientName,
-                  gateway: _paymentMethod,
-                  amount: totalAmount,
-                  status: 'Success',
-                  transactionId: txnId,
-                  timestamp: DateTime.now(),
-                );
-                await DatabaseService.addTransaction(tx);
+                try {
+                  final tx = PaymentTransactionModel(
+                    id: 'tx_${DateTime.now().millisecondsSinceEpoch}',
+                    orderId: orderId,
+                    customerName: recipientName,
+                    gateway: _paymentMethod,
+                    amount: totalAmount,
+                    status: 'Success',
+                    transactionId: txnId,
+                    timestamp: DateTime.now(),
+                  );
+                  await DatabaseService.addTransaction(tx);
+                } catch (txEx) {
+                  debugPrint('Failed to save transaction log: $txEx');
+                  // We continue because payment succeeded anyway!
+                }
 
                 // 2. Place Paid Order
                 final paidOrder = OrderModel(
@@ -236,17 +295,23 @@ class _CheckoutViewState extends State<CheckoutView> {
 
                 // 3. Clear cart and return
                 CartService.instance.clearCart();
-                if (mounted) {
-                  Navigator.pop(context); // Pop payment simulator
-                  _showSuccessDialog();
-                }
+                _showSuccessAnimation();
               } catch (e) {
                 _showErrorSnackBar('Failed to save order details: $e');
+              } finally {
+                if (mounted) {
+                  setState(() => _isSubmitting = false);
+                }
               }
             },
             onPaymentFailure: (errMsg) async {
+              if (mounted) {
+                Navigator.pop(context); // Close simulator immediately
+              }
+              _showErrorSnackBar('Payment Failed: $errMsg');
+
               try {
-                // Save failed transaction log
+                // Save failed transaction log in the background
                 final tx = PaymentTransactionModel(
                   id: 'tx_${DateTime.now().millisecondsSinceEpoch}',
                   orderId: orderId,
@@ -260,11 +325,6 @@ class _CheckoutViewState extends State<CheckoutView> {
                 );
                 await DatabaseService.addTransaction(tx);
               } catch (_) {}
-
-              if (mounted) {
-                Navigator.pop(context); // Pop payment simulator
-                _showErrorSnackBar('Payment Failed: $errMsg');
-              }
             },
           ),
         ),
@@ -272,35 +332,24 @@ class _CheckoutViewState extends State<CheckoutView> {
     }
   }
 
-  void _showSuccessDialog() {
-    showDialog(
+  void _showSuccessAnimation() {
+    showGeneralDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF150A2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_rounded, color: Colors.greenAccent),
-            SizedBox(width: 12),
-            Text('Order Placed!', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: const Text(
-          'Your order has been placed successfully! You can track its status in the Orders section of your profile.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Pop dialog
-              Navigator.pop(context); // Pop Checkout page
-            },
-            child: const Text('GREAT', style: TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+      barrierColor: const Color(0xFF070412),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, anim1, anim2) {
+        return const _CheckoutSuccessAnimation();
+      },
     );
+
+    // Auto-dismiss after 2.5 seconds and pop checkout page
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        Navigator.pop(context); // Pop animation
+        Navigator.pop(context); // Pop Checkout page
+      }
+    });
   }
 
   void _showErrorSnackBar(String msg) {
@@ -471,6 +520,25 @@ class _CheckoutViewState extends State<CheckoutView> {
                       style: const TextStyle(color: Colors.white),
                       validator: (val) => val == null || val.trim().isEmpty ? 'Please enter shipping address' : null,
                     ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+                        icon: _isLoadingLocation
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF8A00)))
+                            : const Icon(Icons.my_location, size: 16, color: Color(0xFFFF8A00)),
+                        label: Text(
+                          _isLoadingLocation ? 'Locating...' : 'Use Current Location',
+                          style: const TextStyle(color: Color(0xFFFF8A00), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          backgroundColor: const Color(0xFFFF8A00).withValues(alpha: 0.1),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -485,7 +553,23 @@ class _CheckoutViewState extends State<CheckoutView> {
                     if (_paymentSettings?.codEnabled ?? true)
                       RadioListTile<String>(
                         title: const Text('Cash on Delivery (COD)', style: TextStyle(color: Colors.white)),
-                        value: 'COD',
+                        value: 'Cash on Delivery',
+                        groupValue: _paymentMethod,
+                        activeColor: const Color(0xFFFF8A00),
+                        onChanged: (val) => setState(() => _paymentMethod = val!),
+                      ),
+                    if (_paymentSettings?.walletEnabled ?? true)
+                      RadioListTile<String>(
+                        title: const Text('Digital Wallet Balance', style: TextStyle(color: Colors.white)),
+                        value: 'Wallet',
+                        groupValue: _paymentMethod,
+                        activeColor: const Color(0xFFFF8A00),
+                        onChanged: (val) => setState(() => _paymentMethod = val!),
+                      ),
+                    if (_paymentSettings?.upiEnabled ?? true)
+                      RadioListTile<String>(
+                        title: const Text('Direct UPI (GPay/PhonePe/Paytm)', style: TextStyle(color: Colors.white)),
+                        value: 'UPI',
                         groupValue: _paymentMethod,
                         activeColor: const Color(0xFFFF8A00),
                         onChanged: (val) => setState(() => _paymentMethod = val!),
@@ -524,6 +608,8 @@ class _CheckoutViewState extends State<CheckoutView> {
                       ),
                     if (_paymentSettings != null &&
                         !_paymentSettings!.codEnabled &&
+                        !_paymentSettings!.walletEnabled &&
+                        !_paymentSettings!.upiEnabled &&
                         !_paymentSettings!.razorpay.isEnabled &&
                         !_paymentSettings!.stripe.isEnabled &&
                         !_paymentSettings!.phonepe.isEnabled &&
@@ -649,12 +735,106 @@ class _CheckoutViewState extends State<CheckoutView> {
                         ),
                       )
                     : Text(
-                        _paymentMethod == 'COD' ? 'PLACE COD ORDER' : 'PAY WITH $_paymentMethod',
+                        _paymentMethod == 'Cash on Delivery' ? 'PLACE COD ORDER' : 'PAY WITH $_paymentMethod',
                         style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
                       ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CheckoutSuccessAnimation extends StatefulWidget {
+  const _CheckoutSuccessAnimation();
+
+  @override
+  State<_CheckoutSuccessAnimation> createState() => _CheckoutSuccessAnimationState();
+}
+
+class _CheckoutSuccessAnimationState extends State<_CheckoutSuccessAnimation> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: 1.2).chain(CurveTween(curve: Curves.easeOutBack)), weight: 40),
+      TweenSequenceItem(tween: Tween<double>(begin: 1.2, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 20),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 40),
+    ]).animate(_controller);
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.4, curve: Curves.easeIn)),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _opacityAnimation.value,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF8A00).withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFFF8A00), width: 4),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.check_rounded, color: Color(0xFFFF8A00), size: 60),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'Order Confirmed!',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Your food is being prepared...',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

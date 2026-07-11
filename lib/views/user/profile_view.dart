@@ -122,12 +122,33 @@ class _ProfileViewState extends State<ProfileView> {
     final user = AuthService.currentUser;
 
     if (user == null) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF070412),
+      return Scaffold(
+        backgroundColor: const Color(0xFF070412),
         body: Center(
-          child: Text(
-            'Please log in to view profile.',
-            style: TextStyle(color: Colors.white60),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Please log in to view profile.',
+                style: TextStyle(color: Colors.white60, fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginView()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF8A00),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('LOG IN', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
         ),
       );

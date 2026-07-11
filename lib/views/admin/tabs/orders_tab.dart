@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import '../../../models/order.dart';
 import '../../../services/database_service.dart';
@@ -416,9 +417,94 @@ class _OrdersTabState extends State<OrdersTab> {
   }
 
   void _printInvoice(OrderModel order) {
-    // Standard Javascript print triggers printing the screen contents
-    // To make it look extremely premium, browser printing displays the window contents cleanly.
-    web.window.print();
+    final newWindow = web.window.open('', '_blank');
+    if (newWindow == null) {
+      _showErrorSnackBar('Please allow popups to print invoices.');
+      return;
+    }
+
+    String itemsHtml = order.items.map((item) {
+      final total = item.quantity * item.price;
+      return '''
+        <tr>
+          <td>${item.name}</td>
+          <td>${item.quantity}</td>
+          <td>₹${item.price.toStringAsFixed(2)}</td>
+          <td>₹${total.toStringAsFixed(2)}</td>
+        </tr>
+      ''';
+    }).join('');
+
+    final innerHtml = '''
+    <head>
+      <title>Invoice - ${order.id}</title>
+      <style>
+        body { font-family: 'Arial', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #FF8A00; padding-bottom: 20px; }
+        .logo { font-size: 28px; font-weight: bold; color: #FF8A00; }
+        .details { margin-top: 40px; display: flex; justify-content: space-between; }
+        .details h3 { color: #555; margin-bottom: 8px; font-size: 16px; }
+        .details p { margin: 4px 0; color: #666; font-size: 14px; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 40px; }
+        .table th, .table td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; font-size: 14px; }
+        .table th { background-color: #fcfcfc; color: #333; font-weight: bold; }
+        .total { margin-top: 30px; text-align: right; font-size: 20px; font-weight: bold; color: #FF8A00; }
+        @media print {
+          body { padding: 0; }
+          .header { border-bottom: 2px solid #000; }
+          .logo, .total { color: #000 !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">FoodChannel MNL</div>
+        <div style="text-align: right;">
+          <h2 style="margin: 0; color: #333;">INVOICE</h2>
+          <p style="margin: 4px 0; color: #666;">Order ID: ${order.id}</p>
+          <p style="margin: 4px 0; color: #666;">Date: ${DateFormat('yMMMd').format(order.createdDate)}</p>
+        </div>
+      </div>
+      <div class="details">
+        <div>
+          <h3>Bill To:</h3>
+          <p><strong>${order.customerName}</strong></p>
+          <p>${order.customerEmail}</p>
+          <p>${order.customerPhone}</p>
+          <p style="max-width: 250px;">${order.deliveryAddress}</p>
+        </div>
+        <div style="text-align: right;">
+          <h3>Payment Details:</h3>
+          <p>Method: <strong>${order.paymentMethod}</strong></p>
+          <p>Status: <strong>${order.paymentStatus}</strong></p>
+        </div>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          $itemsHtml
+        </tbody>
+      </table>
+      <div class="total">
+        Grand Total: ₹${order.totalAmount.toStringAsFixed(2)}
+      </div>
+    </body>
+    ''';
+
+    // Set the inner HTML of the new window
+    newWindow.document.documentElement?.innerHTML = innerHtml.toJS;
+
+    // Call print after a small delay to ensure rendering is complete
+    Future.delayed(const Duration(milliseconds: 300), () {
+      newWindow.print();
+    });
   }
 
   @override

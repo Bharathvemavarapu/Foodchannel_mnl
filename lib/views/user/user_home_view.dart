@@ -1,12 +1,19 @@
 import 'dart:ui_web' as ui_web;
+import 'dart:js_interop';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:web/web.dart' as web;
+import 'package:geolocator/geolocator.dart';
 import '../../models/app_settings.dart';
 import '../../models/product.dart';
 import '../../models/address.dart';
+import '../../models/promo_code.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/location_service.dart';
+import '../../services/restaurant_service.dart';
+import '../../utils/constants.dart';
 import '../auth/login_view.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/add_to_cart_button.dart';
@@ -33,11 +40,21 @@ class _UserHomeViewState extends State<UserHomeView> {
   String _selectedLocationLabel = 'Work';
   List<UserAddressModel> _savedAddresses = [];
 
+  // New location service integration state variables
+  bool _isLoadingLocation = false;
+  String? _locationError;
+  double? _userLat;
+  double? _userLng;
+  AddressDetails _addressDetails = AddressDetails.empty();
+  double _filterDistance = 15.0; // Default max distance
+  String _restaurantSortBy = 'nearest'; // Default sorting mode
+
   @override
   void initState() {
     super.initState();
     _loadStoreMeta();
     _loadUserAddresses();
+    _initUserLocation();
   }
 
   @override
@@ -46,6 +63,116 @@ class _UserHomeViewState extends State<UserHomeView> {
     _scrollController.dispose();
     _hotDealsScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initUserLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+      _locationError = null;
+    });
+
+    try {
+      final isServiceEnabled = await LocationService.instance.checkAndRequestPermissions();
+      if (!isServiceEnabled) {
+        setState(() {
+          _locationError = LocationService.instance.errorMessage;
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      await LocationService.instance.initLocationUpdates(onUpdate: (Position position) {
+        if (mounted) {
+          setState(() {
+            _userLat = position.latitude;
+            _userLng = position.longitude;
+            _isLoadingLocation = false;
+            _locationError = null;
+            _addressDetails = LocationService.instance.currentAddress;
+            _locationSearchController.text = _addressDetails.fullAddress;
+          });
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _locationError = e.toString();
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _performLocationSearch(String text) async {
+    final query = text.trim();
+    if (query.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a location or food search query!'),
+          backgroundColor: Color(0xFFFF8A00),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      final pos = await LocationService.instance.forwardGeocode(query);
+      if (pos != null) {
+        final addrDetails = await LocationService.instance.reverseGeocode(pos.latitude, pos.longitude);
+        setState(() {
+          _userLat = pos.latitude;
+          _userLng = pos.longitude;
+          _addressDetails = addrDetails;
+          _locationSearchController.text = addrDetails.fullAddress;
+          _searchQuery = ''; // Clear food filter on location update to show all nearby restaurants
+          _locationError = null;
+        });
+      } else {
+        setState(() {
+          _searchQuery = query; // Treat as food query search filter if geocoding fails
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Searching menus and restaurants for: "$query"'),
+              backgroundColor: const Color(0xFFFF8A00),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _searchQuery = query;
+      });
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+      _scrollToFeatured();
+    }
+
+    // Persist to user profile database if location changed
+    final user = AuthService.currentUser;
+    if (user != null && _searchQuery.isEmpty) {
+      try {
+        await DatabaseService.updateUserProfileFields(user.uid, {
+          'address': query,
+        });
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Delivery location updated to: $query'),
+          backgroundColor: const Color(0xFFFF8A00),
+        ),
+      );
+    }
   }
 
   Future<void> _loadUserAddresses() async {
@@ -94,6 +221,10 @@ class _UserHomeViewState extends State<UserHomeView> {
     }
   }
 
+  void _detectCurrentLocation() {
+    _initUserLocation();
+  }
+
   Future<void> _handleLogout() async {
     await AuthService.logout();
     if (!mounted) return;
@@ -103,8 +234,19 @@ class _UserHomeViewState extends State<UserHomeView> {
     );
   }
 
-  String _getMapboxViewType(double lat, double lng) {
-    final viewType = 'user-mapbox-map-${lat.toStringAsFixed(5)}-${lng.toStringAsFixed(5)}';
+  String _getMapboxViewType(double lat, double lng, List<RestaurantModel> restaurants) {
+    final token = Constants.mapboxToken;
+    final viewType = 'user-mapbox-map-${lat.toStringAsFixed(5)}-${lng.toStringAsFixed(5)}-${restaurants.length}';
+    
+    final restaurantsJson = jsonEncode(restaurants.map((r) => {
+      'name': r.name,
+      'rating': r.rating,
+      'cuisine': r.cuisine,
+      'lat': r.latitude,
+      'lng': r.longitude,
+      'distance': r.distanceKm.toStringAsFixed(1),
+    }).toList());
+    
     ui_web.platformViewRegistry.registerViewFactory(
       viewType,
       (int viewId) {
@@ -118,19 +260,101 @@ class _UserHomeViewState extends State<UserHomeView> {
   <style>
     body { margin: 0; padding: 0; }
     #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
+    
+    /* Animated User Location Marker */
+    .user-marker {
+      width: 15px;
+      height: 15px;
+      background: #007cff;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+    .user-marker::after {
+      content: '';
+      position: absolute;
+      width: 45px;
+      height: 45px;
+      border-radius: 50%;
+      background: rgba(0, 124, 255, 0.25);
+      top: -18px;
+      left: -18px;
+      animation: pulse 2s infinite ease-out;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(1.8); opacity: 0; }
+    }
+    
+    /* Restaurant Marker style */
+    .restaurant-marker {
+      font-size: 26px;
+      cursor: pointer;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+      transition: transform 0.2s;
+    }
+    .restaurant-marker:hover {
+      transform: scale(1.2);
+    }
+    
+    /* Custom Popup styling */
+    .mapboxgl-popup-content {
+      background: #140A28 !important;
+      color: #FFFFFF !important;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 10px 14px;
+      font-family: 'Outfit', sans-serif;
+    }
+    .mapboxgl-popup-anchor-top .mapboxgl-popup-tip { border-bottom-color: #140A28 !important; }
+    .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: #140A28 !important; }
+    .mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: #140A28 !important; }
+    .mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: #140A28 !important; }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1IjoicGF2YW5rdW1hcnN3YW15IiwiYSI6ImNtNnc1c3ZpdTBkdGgyanM5b25rN2ZqcncifQ.Ls1e2W6rx3apoBsStWa5Ow';
+    mapboxgl.accessToken = '$token';
     const map = new mapboxgl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: 'mapbox://styles/mapbox/navigation-night-v1',
       center: [$lng, $lat],
-      zoom: 14
+      zoom: 12
     });
-    new mapboxgl.Marker({ color: '#FF8A00' }).setLngLat([$lng, $lat]).addTo(map);
+    
+    map.on('load', () => {
+      map.flyTo({
+        center: [$lng, $lat],
+        zoom: 15.5,
+        essential: true,
+        duration: 2500
+      });
+    });
+
+    const userMarkerEl = document.createElement('div');
+    userMarkerEl.className = 'user-marker';
+    new mapboxgl.Marker(userMarkerEl).setLngLat([$lng, $lat]).addTo(map);
+
+    const restaurants = $restaurantsJson;
+    restaurants.forEach(r => {
+      const el = document.createElement('div');
+      el.className = 'restaurant-marker';
+      el.innerHTML = '🍔';
+      
+      const popup = new mapboxgl.Popup({ offset: 25 })
+        .setHTML(`
+          <div style="font-size: 13px; font-weight: bold; color: #FFFF8A00;">\${r.name}</div>
+          <div style="font-size: 11px; margin-top: 4px; color: #e0e0e0;">\${r.cuisine}</div>
+          <div style="font-size: 10px; margin-top: 4px; color: #a0a0a0;">⭐ \${r.rating} • \${r.distance} km away</div>
+        `);
+        
+      new mapboxgl.Marker(el)
+        .setLngLat([r.lng, r.lat])
+        .setPopup(popup)
+        .addTo(map);
+    });
   </script>
 </body>
 </html>
@@ -356,7 +580,13 @@ class _UserHomeViewState extends State<UserHomeView> {
                                   border: InputBorder.none,
                                   isDense: true,
                                 ),
+                                onSubmitted: (val) => _performLocationSearch(val),
                               ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.my_location_rounded, color: Color(0xFFFF8A00), size: 20),
+                              tooltip: 'Use Current Location',
+                              onPressed: _detectCurrentLocation,
                             ),
                             PopupMenuButton<String>(
                               tooltip: 'Select Location Label',
@@ -380,7 +610,8 @@ class _UserHomeViewState extends State<UserHomeView> {
                                   ],
                                 ),
                               ),
-                              onSelected: (String label) {
+                              onSelected: (String label) async {
+                                String selectedAddressText = '';
                                 setState(() {
                                   _selectedLocationLabel = label;
                                   final match = _savedAddresses.firstWhere(
@@ -388,17 +619,19 @@ class _UserHomeViewState extends State<UserHomeView> {
                                     orElse: () => UserAddressModel(id: '', title: '', recipientName: '', phone: '', fullAddress: ''),
                                   );
                                   if (match.fullAddress.isNotEmpty) {
-                                    _locationSearchController.text = match.fullAddress;
+                                    selectedAddressText = match.fullAddress;
                                   } else {
                                     if (label == 'Home') {
-                                      _locationSearchController.text = '123 Main Street, Sector 4, Bangalore';
+                                      selectedAddressText = '123 Main Street, Sector 4, Bangalore';
                                     } else if (label == 'Work') {
-                                      _locationSearchController.text = 'Office Complex Phase 2, Whitefield, Bangalore';
-                                    } else {
-                                      _locationSearchController.text = '';
+                                      selectedAddressText = 'Office Complex Phase 2, Whitefield, Bangalore';
                                     }
                                   }
+                                  _locationSearchController.text = selectedAddressText;
                                 });
+                                if (selectedAddressText.isNotEmpty) {
+                                  await _performLocationSearch(selectedAddressText);
+                                }
                               },
                               itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                                 const PopupMenuItem<String>(value: 'Home', child: Text('Home')),
@@ -408,41 +641,7 @@ class _UserHomeViewState extends State<UserHomeView> {
                               ],
                             ),
                             ElevatedButton(
-                              onPressed: () async {
-                                final text = _locationSearchController.text.trim();
-                                if (text.isNotEmpty) {
-                                  setState(() {
-                                    _searchQuery = text;
-                                  });
-                                  _scrollToFeatured();
-
-                                  // Persist to user profile database
-                                  final user = AuthService.currentUser;
-                                  if (user != null) {
-                                    try {
-                                      await DatabaseService.updateUserProfileFields(user.uid, {
-                                        'address': text,
-                                      });
-                                    } catch (_) {}
-                                  }
-
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Delivery location updated to: $text'),
-                                        backgroundColor: const Color(0xFFFF8A00),
-                                      ),
-                                    );
-                                  }
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Please enter a location or food search query!'),
-                                      backgroundColor: Color(0xFFFF8A00),
-                                    ),
-                                  );
-                                }
-                              },
+                              onPressed: () => _performLocationSearch(_locationSearchController.text),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFFF8A00),
                                 foregroundColor: Colors.white,
@@ -518,39 +717,12 @@ class _UserHomeViewState extends State<UserHomeView> {
                       children: [
                         Expanded(flex: 11, child: heroTextContent),
                         const SizedBox(width: 48),
-                        Expanded(
+                        const Expanded(
                           flex: 12,
-                          child: AspectRatio(
+                          child: _HoverAnimatedHeroImage(
+                            key: ValueKey('hero-image-desktop'),
                             aspectRatio: 1.25,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: Image.asset(
-                                      'assets/hero_mockup.jpg',
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.center,
-                                    ),
-                                  ),
-                                  // Subtle dark overlay gradient
-                                  Positioned.fill(
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            const Color(0xFF070412).withValues(alpha: 0.6),
-                                            Colors.transparent,
-                                          ],
-                                          begin: Alignment.centerLeft,
-                                          end: Alignment.centerRight,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            showGradient: true,
                           ),
                         ),
                       ],
@@ -563,16 +735,10 @@ class _UserHomeViewState extends State<UserHomeView> {
                     children: [
                       heroTextContent,
                       const SizedBox(height: 32),
-                      AspectRatio(
+                      const _HoverAnimatedHeroImage(
+                        key: ValueKey('hero-image-mobile'),
                         aspectRatio: 1.4,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: Image.asset(
-                            'assets/hero_mockup.jpg',
-                            fit: BoxFit.cover,
-                            alignment: Alignment.center,
-                          ),
-                        ),
+                        showGradient: false,
                       ),
                     ],
                   );
@@ -864,6 +1030,244 @@ class _UserHomeViewState extends State<UserHomeView> {
                     },
                   ),
 
+                  // A. Nearby Top Restaurants Section
+                  const Text('Top Restaurants Near Your Location 📍', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const SizedBox(height: 8),
+                  if (_isLoadingLocation) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Color(0xFFFF8A00))),
+                            SizedBox(height: 12),
+                            Text("Detecting your live coordinates...", style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else if (_locationError != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.error_outline_rounded, color: Colors.redAccent),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _locationError!,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: () async {
+                                    await Geolocator.openAppSettings();
+                                  },
+                                  icon: const Icon(Icons.settings, size: 16, color: Color(0xFFFF8A00)),
+                                  label: const Text("Device Settings", style: TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton.icon(
+                                  onPressed: _initUserLocation,
+                                  icon: const Icon(Icons.my_location, size: 16),
+                                  label: const Text("Try Again", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF8A00)),
+                                ),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      _addressDetails.fullAddress.isNotEmpty 
+                          ? 'Showing popular restaurants near: ${_addressDetails.fullAddress}'
+                          : 'Please use location detection or search to find restaurants near you',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Filter & Sort UI
+                    Row(
+                      children: [
+                        // Distance Filter
+                        PopupMenuButton<double>(
+                          tooltip: 'Filter Distance',
+                          onSelected: (double val) {
+                            setState(() {
+                              _filterDistance = val;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF8A00).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFFFF8A00).withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.radar_rounded, color: Color(0xFFFF8A00), size: 14),
+                                const SizedBox(width: 6),
+                                Text('Within ${_filterDistance.toInt()} km', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_drop_down, color: Colors.white54, size: 16),
+                              ],
+                            ),
+                          ),
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(value: 5.0, child: Text('Within 5 km')),
+                            const PopupMenuItem(value: 10.0, child: Text('Within 10 km')),
+                            const PopupMenuItem(value: 15.0, child: Text('Within 15 km')),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        // Sort selector
+                        PopupMenuButton<String>(
+                          tooltip: 'Sort Restaurants',
+                          onSelected: (String val) {
+                            setState(() {
+                              _restaurantSortBy = val;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF8A00).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFFFF8A00).withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sort_rounded, color: Color(0xFFFF8A00), size: 14),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _restaurantSortBy == 'nearest' ? 'Nearest First' :
+                                  _restaurantSortBy == 'rating' ? 'Highest Rated' :
+                                  _restaurantSortBy == 'speed' ? 'Fastest Delivery' : 'Open Now',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_drop_down, color: Colors.white54, size: 16),
+                              ],
+                            ),
+                          ),
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(value: 'nearest', child: Text('Nearest First')),
+                            const PopupMenuItem(value: 'rating', child: Text('Highest Rated')),
+                            const PopupMenuItem(value: 'speed', child: Text('Fastest Delivery')),
+                            const PopupMenuItem(value: 'open', child: Text('Open Now')),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Neighborhood Interactive Mapbox Map
+                    if (_userLat != null && _userLng != null) ...[
+                      const Text('Live Neighborhood Map 🗺️', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white70)),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 240,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: HtmlElementView(
+                            key: ValueKey('user-live-map-$_userLat-$_userLng-${_getRestaurantsForLocation().length}'),
+                            viewType: _getMapboxViewType(_userLat!, _userLng!, _getRestaurantsForLocation()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    SizedBox(
+                      height: 140,
+                      child: Builder(
+                        builder: (context) {
+                          final restaurants = _getRestaurantsForLocation();
+                          if (restaurants.isEmpty) {
+                            return const Center(
+                              child: Text('No nearby restaurants match the filters/search.', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                            );
+                          }
+                          return ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: restaurants.length,
+                            itemBuilder: (context, index) {
+                              final rest = restaurants[index];
+                              return _buildRestaurantCard(rest);
+                            },
+                          );
+                        }
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 36),
+
+                  // B. Active Offers & Promo Coupons Section
+                  const Text('Exclusive Active Offers 🏷️', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const SizedBox(height: 8),
+                  const Text('Tap on any code to copy and apply discount at checkout', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  const SizedBox(height: 16),
+                  FutureBuilder<List<PromoCodeModel>>(
+                    future: DatabaseService.getPromoCodes(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        // Return a default couple of attractive mock offers if database is empty
+                        return SizedBox(
+                          height: 100,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              _buildPromoCard("FIRST50", "50% OFF on your first order", "Min Order: ₹200"),
+                              _buildPromoCard("FREEDEL", "Free delivery on premium food", "Min Order: ₹500"),
+                              _buildPromoCard("CHEFSPECIAL", "₹100 discount on chef recommendations", "Min Order: ₹400"),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final promos = snapshot.data!;
+                      return SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: promos.length,
+                          itemBuilder: (context, idx) {
+                            final promo = promos[idx];
+                            return _buildPromoCard(
+                              promo.code,
+                              "${promo.discountPercentage.toStringAsFixed(0)}% OFF Discount Coupon",
+                              "Min Order: ₹${promo.minOrderAmount.toStringAsFixed(0)}",
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 36),
+
                   // 3. Featured Products Grid (StreamBuilder)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1006,7 +1410,7 @@ class _UserHomeViewState extends State<UserHomeView> {
                         borderRadius: BorderRadius.circular(22),
                         child: HtmlElementView(
                           key: ValueKey('user-map-${_address.latitude}-${_address.longitude}'),
-                          viewType: _getMapboxViewType(_address.latitude, _address.longitude),
+                          viewType: _getMapboxViewType(_address.latitude, _address.longitude, []),
                         ),
                       ),
                     ),
@@ -1361,6 +1765,223 @@ class _UserHomeViewState extends State<UserHomeView> {
       }
     }
   }
+
+  List<RestaurantModel> _getRestaurantsForLocation() {
+    if (_userLat == null || _userLng == null) return [];
+    return RestaurantService.instance.getNearbyRestaurants(
+      userLat: _userLat!,
+      userLng: _userLng!,
+      maxDistanceKm: _filterDistance,
+      sortBy: _restaurantSortBy,
+      searchQuery: _searchQuery,
+    );
+  }
+
+  Widget _buildRestaurantCard(RestaurantModel rest) {
+    final distance = rest.distanceKm;
+    final deliveryTime = rest.deliveryTimeMins;
+    final name = rest.name;
+    final rating = "${rest.rating.toStringAsFixed(1)} ★";
+    final cuisine = rest.cuisine;
+    final imageUrl = rest.imageUrl;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _searchQuery = name;
+        });
+        _scrollToFeatured();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Showing menus from $name! Distance: ${distance.toStringAsFixed(1)} km, Delivery Time: $deliveryTime mins.'),
+            backgroundColor: const Color(0xFFFF8A00),
+          ),
+        );
+      },
+      child: Container(
+        width: 280,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF140A28),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // Background Image
+              Positioned.fill(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(color: Colors.white10),
+                ),
+              ),
+              // Black transparent gradient
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.black87, Colors.black.withValues(alpha: 0.3)],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                    ),
+                  ),
+                ),
+              ),
+              // Details
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF8A00),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(rating, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('${distance.toStringAsFixed(1)} km', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        const SizedBox(width: 8),
+                        Text('$deliveryTime mins', style: const TextStyle(color: Color(0xFFFF8A00), fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(cuisine, style: const TextStyle(color: Colors.white38, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPromoCard(String code, String desc, String minOrder) {
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: code));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Coupon "$code" copied to clipboard! Apply at checkout.'),
+            backgroundColor: const Color(0xFFFF8A00),
+          ),
+        );
+      },
+      child: Container(
+        width: 300,
+        margin: const EdgeInsets.only(right: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF3E1F5F), Color(0xFF230D3A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFF8A00).withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFF8A00),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.local_offer_rounded, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(code, style: const TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0)),
+                  const SizedBox(height: 4),
+                  Text(desc, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(minOrder, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
+class _HoverAnimatedHeroImage extends StatefulWidget {
+  final double aspectRatio;
+  final bool showGradient;
 
+  const _HoverAnimatedHeroImage({
+    super.key,
+    required this.aspectRatio,
+    required this.showGradient,
+  });
+
+  @override
+  State<_HoverAnimatedHeroImage> createState() => _HoverAnimatedHeroImageState();
+}
+
+class _HoverAnimatedHeroImageState extends State<_HoverAnimatedHeroImage> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AspectRatio(
+        aspectRatio: widget.aspectRatio,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: AnimatedScale(
+                  scale: _isHovered ? 1.08 : 1.0,
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                  child: Image.asset(
+                    'assets/hero_mockup.jpg',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+              if (widget.showGradient)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF070412).withValues(alpha: 0.65),
+                            Colors.transparent,
+                          ],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

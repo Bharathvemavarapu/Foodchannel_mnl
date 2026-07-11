@@ -9,6 +9,7 @@ import 'package:lottie/lottie.dart';
 
 import 'models/user.dart';
 import 'services/auth_service.dart';
+import 'utils/constants.dart';
 import 'views/auth/login_view.dart';
 import 'views/auth/register_view.dart';
 import 'views/auth/forgot_password_view.dart';
@@ -257,7 +258,7 @@ class _ConnectionCheckScreenState extends State<ConnectionCheckScreen> {
     });
 
     try {
-      final token = 'pk.eyJ1IjoicGF2YW5rdW1hcnN3YW15IiwiYSI6ImNtNnc1c3ZpdTBkdGgyanM5b25rN2ZqcncifQ.Ls1e2W6rx3apoBsStWa5Ow';
+      final token = Constants.mapboxToken;
       final response = await http.get(Uri.parse('https://api.mapbox.com/geocoding/v5/mapbox.places/India.json?access_token=$token&limit=1'));
       if (response.statusCode == 200) {
         if (mounted) {
@@ -436,6 +437,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       debugPrint("Error initializing video player: $error");
       _onVideoEnded();
     });
+
+    // Safety fallback timer: if the splash screen is still active after 6 seconds, bypass it.
+    Timer(const Duration(seconds: 6), () {
+      if (mounted && !_isVideoEnded) {
+        debugPrint("Splash video loading took too long or autoplay was blocked. Transitioning...");
+        _onVideoEnded();
+      }
+    });
   }
 
   void _videoListener() {
@@ -482,14 +491,31 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       body: Stack(
         children: [
           if (!_isVideoEnded)
-            Center(
+            Positioned.fill(
               child: _isVideoInitialized && _videoController != null
-                  ? AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: VideoPlayer(_videoController!),
+                  ? ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.center,
+                        maxWidth: double.infinity,
+                        maxHeight: double.infinity,
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _videoController!.value.size.width > 0
+                                ? _videoController!.value.size.width * 1.12
+                                : 1600 * 1.12,
+                            height: _videoController!.value.size.height > 0
+                                ? _videoController!.value.size.height * 1.12
+                                : 900 * 1.12,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        ),
+                      ),
                     )
-                  : const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF8A00)),
+                  : const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF8A00)),
+                      ),
                     ),
             ),
           if (_isVideoEnded)

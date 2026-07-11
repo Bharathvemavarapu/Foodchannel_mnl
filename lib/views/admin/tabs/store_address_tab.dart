@@ -6,6 +6,7 @@ import 'package:web/web.dart' as web;
 import '../../../models/app_settings.dart';
 import '../../../services/database_service.dart';
 import '../../../widgets/glass_card.dart';
+import '../../../utils/constants.dart';
 
 class StoreAddressTab extends StatefulWidget {
   const StoreAddressTab({super.key});
@@ -15,7 +16,7 @@ class StoreAddressTab extends StatefulWidget {
 }
 
 class _StoreAddressTabState extends State<StoreAddressTab> {
-  static const String mapboxToken = 'pk.eyJ1IjoicGF2YW5rdW1hcnN3YW15IiwiYSI6ImNtNnc1c3ZpdTBkdGgyanM5b25rN2ZqcncifQ.Ls1e2W6rx3apoBsStWa5Ow';
+  static const String mapboxToken = Constants.mapboxToken;
 
   final _formKey = GlobalKey<FormState>();
   final _searchController = TextEditingController();
@@ -346,8 +347,8 @@ class _StoreAddressTabState extends State<StoreAddressTab> {
                             borderRadius: BorderRadius.circular(18),
                             child: _latitude != null && _longitude != null
                                 ? HtmlElementView(
-                                    key: ValueKey('map-${_latitude}-${_longitude}'),
-                                    viewType: _getMapboxViewType(_latitude!, _longitude!),
+                                     key: ValueKey('map-$_latitude-$_longitude'),
+                                     viewType: _getMapboxViewType(_latitude!, _longitude!),
                                   )
                                 : const Center(child: Text('Map coordinates not set.', style: TextStyle(color: Colors.white38))),
                           ),

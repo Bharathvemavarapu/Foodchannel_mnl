@@ -8,6 +8,7 @@ import 'forgot_password_view.dart';
 import 'email_verify_view.dart';
 import '../admin/admin_dashboard_view.dart';
 import '../user/user_home_view.dart';
+import '../user/user_bottom_nav.dart';
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -62,7 +63,7 @@ class _LoginViewState extends State<LoginView> {
       } else {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const UserHomeView()),
+          MaterialPageRoute(builder: (context) => const UserBottomNav()),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -126,7 +127,7 @@ class _LoginViewState extends State<LoginView> {
       } else {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const UserHomeView()),
+          MaterialPageRoute(builder: (context) => const UserBottomNav()),
         );
       }
     } on FirebaseAuthException catch (e) {

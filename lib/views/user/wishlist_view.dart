@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/cart_icon_button.dart';
+import '../auth/login_view.dart';
 
 class WishlistView extends StatelessWidget {
   const WishlistView({super.key});
@@ -14,12 +15,33 @@ class WishlistView extends StatelessWidget {
     final width = MediaQuery.of(context).size.width;
 
     if (user == null) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF070412),
+      return Scaffold(
+        backgroundColor: const Color(0xFF070412),
         body: Center(
-          child: Text(
-            'Please log in to view your wishlist.',
-            style: TextStyle(color: Colors.white60),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Please log in to view your wishlist.',
+                style: TextStyle(color: Colors.white60, fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginView()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF8A00),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('LOG IN', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
         ),
       );

@@ -186,6 +186,8 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
 
       final updated = PaymentSettingsModel(
         codEnabled: _settings.codEnabled,
+        walletEnabled: _settings.walletEnabled,
+        upiEnabled: _settings.upiEnabled,
         minOrderAmountForOnline: minAmt,
         razorpay: GatewayConfig(
           isEnabled: _settings.razorpay.isEnabled,
@@ -335,14 +337,7 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     activeColor: const Color(0xFFFF8A00),
                     onChanged: (val) {
                       setState(() {
-                        _settings = PaymentSettingsModel(
-                          codEnabled: val,
-                          minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                          razorpay: _settings.razorpay,
-                          stripe: _settings.stripe,
-                          cashfree: _settings.cashfree,
-                          phonepe: _settings.phonepe,
-                        );
+                        _settings = _settings.copyWith(codEnabled: val);
                       });
                     },
                   ),
@@ -362,14 +357,52 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            
+            // Wallet & UPI Switches
+            GlassCard(
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Switch(
+                        value: _settings.walletEnabled,
+                        activeColor: const Color(0xFFFF8A00),
+                        onChanged: (val) {
+                          setState(() {
+                            _settings = _settings.copyWith(walletEnabled: val);
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('Enable Digital Wallet Payment', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const Divider(color: Colors.white10, height: 20),
+                  Row(
+                    children: [
+                      Switch(
+                        value: _settings.upiEnabled,
+                        activeColor: const Color(0xFFFF8A00),
+                        onChanged: (val) {
+                          setState(() {
+                            _settings = _settings.copyWith(upiEnabled: val);
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('Enable Direct UPI Payment (GPay/PhonePe/Paytm)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
             
             // Razorpay
             _buildGatewayCard('Razorpay API Integration', _settings.razorpay, (isEnabled) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
+                _settings = _settings.copyWith(
                   razorpay: GatewayConfig(
                     isEnabled: isEnabled,
                     isLiveMode: _settings.razorpay.isLiveMode,
@@ -378,16 +411,11 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _rpLiveKey.text,
                     liveApiSecret: _rpLiveSecret.text,
                   ),
-                  stripe: _settings.stripe,
-                  cashfree: _settings.cashfree,
-                  phonepe: _settings.phonepe,
                 );
               });
             }, (isLive) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
+                _settings = _settings.copyWith(
                   razorpay: GatewayConfig(
                     isEnabled: _settings.razorpay.isEnabled,
                     isLiveMode: isLive,
@@ -396,9 +424,6 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _rpLiveKey.text,
                     liveApiSecret: _rpLiveSecret.text,
                   ),
-                  stripe: _settings.stripe,
-                  cashfree: _settings.cashfree,
-                  phonepe: _settings.phonepe,
                 );
               });
             }, _rpTestKey, _rpTestSecret, _rpLiveKey, _rpLiveSecret),
@@ -407,10 +432,7 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
             // Stripe
             _buildGatewayCard('Stripe API Integration', _settings.stripe, (isEnabled) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
+                _settings = _settings.copyWith(
                   stripe: GatewayConfig(
                     isEnabled: isEnabled,
                     isLiveMode: _settings.stripe.isLiveMode,
@@ -419,16 +441,11 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _stripeLiveKey.text,
                     liveApiSecret: _stripeLiveSecret.text,
                   ),
-                  cashfree: _settings.cashfree,
-                  phonepe: _settings.phonepe,
                 );
               });
             }, (isLive) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
+                _settings = _settings.copyWith(
                   stripe: GatewayConfig(
                     isEnabled: _settings.stripe.isEnabled,
                     isLiveMode: isLive,
@@ -437,8 +454,6 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _stripeLiveKey.text,
                     liveApiSecret: _stripeLiveSecret.text,
                   ),
-                  cashfree: _settings.cashfree,
-                  phonepe: _settings.phonepe,
                 );
               });
             }, _stripeTestKey, _stripeTestSecret, _stripeLiveKey, _stripeLiveSecret),
@@ -447,11 +462,7 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
             // Cashfree
             _buildGatewayCard('Cashfree API Integration', _settings.cashfree, (isEnabled) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
-                  stripe: _settings.stripe,
+                _settings = _settings.copyWith(
                   cashfree: GatewayConfig(
                     isEnabled: isEnabled,
                     isLiveMode: _settings.cashfree.isLiveMode,
@@ -460,16 +471,11 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _cfLiveKey.text,
                     liveApiSecret: _cfLiveSecret.text,
                   ),
-                  phonepe: _settings.phonepe,
                 );
               });
             }, (isLive) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
-                  stripe: _settings.stripe,
+                _settings = _settings.copyWith(
                   cashfree: GatewayConfig(
                     isEnabled: _settings.cashfree.isEnabled,
                     isLiveMode: isLive,
@@ -478,7 +484,6 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
                     liveApiKey: _cfLiveKey.text,
                     liveApiSecret: _cfLiveSecret.text,
                   ),
-                  phonepe: _settings.phonepe,
                 );
               });
             }, _cfTestKey, _cfTestSecret, _cfLiveKey, _cfLiveSecret),
@@ -487,12 +492,7 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
             // PhonePe
             _buildGatewayCard('PhonePe API Integration', _settings.phonepe, (isEnabled) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
-                  stripe: _settings.stripe,
-                  cashfree: _settings.cashfree,
+                _settings = _settings.copyWith(
                   phonepe: GatewayConfig(
                     isEnabled: isEnabled,
                     isLiveMode: _settings.phonepe.isLiveMode,
@@ -505,12 +505,7 @@ class _PaymentsTabState extends State<PaymentsTab> with SingleTickerProviderStat
               });
             }, (isLive) {
               setState(() {
-                _settings = PaymentSettingsModel(
-                  codEnabled: _settings.codEnabled,
-                  minOrderAmountForOnline: _settings.minOrderAmountForOnline,
-                  razorpay: _settings.razorpay,
-                  stripe: _settings.stripe,
-                  cashfree: _settings.cashfree,
+                _settings = _settings.copyWith(
                   phonepe: GatewayConfig(
                     isEnabled: _settings.phonepe.isEnabled,
                     isLiveMode: isLive,

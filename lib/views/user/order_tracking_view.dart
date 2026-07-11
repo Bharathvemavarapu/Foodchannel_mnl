@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:web/web.dart' as web;
 import '../../models/order.dart';
 import '../../services/database_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../utils/constants.dart';
 
 class OrderTrackingView extends StatefulWidget {
   final String orderId;
@@ -62,6 +65,108 @@ class _OrderTrackingViewState extends State<OrderTrackingView> {
       default:
         return 0;
     }
+  }
+
+  String _getMapboxViewType(double customerLat, double customerLng, double restaurantLat, double restaurantLng) {
+    final viewType = 'rider-mapbox-map-${widget.orderId}-${customerLat.toStringAsFixed(4)}-${restaurantLat.toStringAsFixed(4)}';
+    ui_web.platformViewRegistry.registerViewFactory(
+      viewType,
+      (int viewId) {
+        final mapHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    mapboxgl.accessToken = '${Constants.mapboxToken}';
+    const customer = [$customerLng, $customerLat];
+    const restaurant = [$restaurantLng, $restaurantLat];
+    
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/navigation-night-v1',
+      center: [(customer[0] + restaurant[0]) / 2, (customer[1] + restaurant[1]) / 2],
+      zoom: 13
+    });
+
+    const restMarkerEl = document.createElement('div');
+    restMarkerEl.innerHTML = '🏢';
+    restMarkerEl.style.fontSize = '24px';
+    new mapboxgl.Marker(restMarkerEl).setLngLat(restaurant).addTo(map);
+
+    const custMarkerEl = document.createElement('div');
+    custMarkerEl.innerHTML = '📍';
+    custMarkerEl.style.fontSize = '24px';
+    new mapboxgl.Marker(custMarkerEl).setLngLat(customer).addTo(map);
+
+    const riderMarkerEl = document.createElement('div');
+    riderMarkerEl.innerHTML = '🛵';
+    riderMarkerEl.style.fontSize = '28px';
+    const riderMarker = new mapboxgl.Marker(riderMarkerEl).setLngLat(restaurant).addTo(map);
+
+    map.on('load', () => {
+      map.addSource('route', {
+        'type': 'geojson',
+        'data': {
+          'type': 'Feature',
+          'properties': {},
+          'geometry': {
+            'type': 'LineString',
+            'coordinates': [restaurant, customer]
+          }
+        }
+      });
+
+      map.addLayer({
+        'id': 'route-line',
+        'type': 'line',
+        'source': 'route',
+        'layout': {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        'paint': {
+          'line-color': '#FF8A00',
+          'line-width': 4,
+          'line-dasharray': [2, 2]
+        }
+      });
+
+      let progress = 0;
+      const steps = 600;
+      function animate() {
+        progress = (progress + 1) % steps;
+        const ratio = progress / steps;
+        const currentLng = restaurant[0] + (customer[0] - restaurant[0]) * ratio;
+        const currentLat = restaurant[1] + (customer[1] - restaurant[1]) * ratio;
+        riderMarker.setLngLat([currentLng, currentLat]);
+        requestAnimationFrame(animate);
+      }
+      animate();
+    });
+  </script>
+</body>
+</html>
+''';
+        final encodedHtml = 'data:text/html;charset=utf-8,${Uri.encodeComponent(mapHtml)}';
+        final element = web.HTMLIFrameElement()
+          ..src = encodedHtml
+          ..style.border = 'none'
+          ..style.width = '100%'
+          ..style.height = '100%';
+        return element;
+      },
+    );
+    return viewType;
   }
 
   Future<void> _handleCancelOrder() async {
@@ -136,6 +241,28 @@ class _OrderTrackingViewState extends State<OrderTrackingView> {
           final dateString = DateFormat('dd MMM yyyy, hh:mm a').format(order.createdDate);
           final isCancelled = order.status == 'Cancelled' || order.status == 'Refunded';
 
+          double customerLat = 12.9716;
+          double customerLng = 77.5946;
+          
+          final gpsRegex = RegExp(r"Lat:\s*([-\d.]+),\s*Lng:\s*([-\d.]+)");
+          final match = gpsRegex.firstMatch(order.deliveryAddress);
+          if (match != null) {
+            customerLat = double.tryParse(match.group(1) ?? '') ?? customerLat;
+            customerLng = double.tryParse(match.group(2) ?? '') ?? customerLng;
+          }
+
+          final restaurantName = order.items.isNotEmpty ? order.items.first.name : 'FoodChannel';
+          final latOffset = (restaurantName.hashCode % 10 + 5) / 1000.0;
+          final lngOffset = (restaurantName.hashCode % 8 + 5) / 1000.0;
+          
+          final restaurantLat = customerLat + latOffset;
+          final restaurantLng = customerLng + lngOffset;
+
+          final latDiff = (customerLat - restaurantLat).abs();
+          final lngDiff = (customerLng - restaurantLng).abs();
+          final distance = (latDiff + lngDiff) * 100.0;
+          final deliveryTime = (distance * 8).round() + 8;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -165,10 +292,46 @@ class _OrderTrackingViewState extends State<OrderTrackingView> {
                           Text(order.paymentMethod, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                         ],
                       ),
+                      const Divider(color: Colors.white10, height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Estimated Delivery Distance', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                          Text('${distance.toStringAsFixed(1)} km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Estimated Delivery Time', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                          Text('$deliveryTime mins', style: const TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                if (!isCancelled) ...[
+                  const Text('Live Delivery Route 🛵', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const SizedBox(height: 12),
+                  Container(
+                    height: 300,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: HtmlElementView(
+                        key: ValueKey('order-map-${order.id}-${order.status}'),
+                        viewType: _getMapboxViewType(customerLat, customerLng, restaurantLat, restaurantLng),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
 
                 // Tracker Status Timeline
                 const Text('Delivery Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),

@@ -300,7 +300,9 @@ class DatabaseService {
     final token = await _getToken();
     final url = Uri.parse('$dbUrl/orders/${order.id}.json?auth=$token');
     final response = await http.put(url, body: jsonEncode(order.toJson()));
-    if (response.statusCode != 200) throw Exception('Failed to add order');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to add order: ${response.statusCode} - ${response.body}');
+    }
   }
 
   static Future<void> updateOrderStatus(String orderId, String newStatus, String notes) async {
@@ -308,7 +310,12 @@ class DatabaseService {
     final url = Uri.parse('$dbUrl/orders/$orderId.json?auth=$token');
     
     final getResponse = await http.get(Uri.parse('$dbUrl/orders/$orderId.json?auth=$token'));
-    if (getResponse.statusCode != 200 || getResponse.body == 'null') return;
+    if (getResponse.statusCode != 200) {
+      throw Exception('Failed to fetch order details (Status: ${getResponse.statusCode}): ${getResponse.body}');
+    }
+    if (getResponse.body == 'null') {
+      throw Exception('Order $orderId does not exist in the database');
+    }
     
     final order = OrderModel.fromJson(orderId, jsonDecode(getResponse.body));
     final updatedTimeline = List<OrderTimelineEvent>.from(order.timeline)
@@ -323,7 +330,9 @@ class DatabaseService {
       'paymentStatus': newStatus == 'Delivered' ? 'Paid' : order.paymentStatus,
       'timeline': updatedTimeline.map((t) => t.toJson()).toList(),
     }));
-    if (response.statusCode != 200) throw Exception('Failed to update order status');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update order status (Status: ${response.statusCode}): ${response.body}');
+    }
   }
 
   static Future<void> cancelOrder(String orderId) async {
@@ -335,7 +344,12 @@ class DatabaseService {
     final url = Uri.parse('$dbUrl/orders/$orderId.json?auth=$token');
     
     final getResponse = await http.get(Uri.parse('$dbUrl/orders/$orderId.json?auth=$token'));
-    if (getResponse.statusCode != 200 || getResponse.body == 'null') return;
+    if (getResponse.statusCode != 200) {
+      throw Exception('Failed to fetch order details (Status: ${getResponse.statusCode}): ${getResponse.body}');
+    }
+    if (getResponse.body == 'null') {
+      throw Exception('Order $orderId does not exist in the database');
+    }
     
     final order = OrderModel.fromJson(orderId, jsonDecode(getResponse.body));
     final updatedTimeline = List<OrderTimelineEvent>.from(order.timeline)
@@ -350,7 +364,9 @@ class DatabaseService {
       'paymentStatus': 'Refunded',
       'timeline': updatedTimeline.map((t) => t.toJson()).toList(),
     }));
-    if (response.statusCode != 200) throw Exception('Failed to refund order');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to approve refund (Status: ${response.statusCode}): ${response.body}');
+    }
   }
 
   // --- PAYMENTS ---
@@ -367,7 +383,9 @@ class DatabaseService {
     final token = await _getToken();
     final url = Uri.parse('$dbUrl/store/paymentsSettings.json?auth=$token');
     final response = await http.put(url, body: jsonEncode(settings.toJson()));
-    if (response.statusCode != 200) throw Exception('Failed to save settings');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to save settings: ${response.statusCode} - ${response.body}');
+    }
   }
 
   static Future<List<PaymentTransactionModel>> getTransactions() async {

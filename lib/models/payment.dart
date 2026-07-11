@@ -4,6 +4,8 @@ class PaymentSettingsModel {
   final GatewayConfig cashfree;
   final GatewayConfig phonepe;
   final bool codEnabled;
+  final bool walletEnabled;
+  final bool upiEnabled;
   final double minOrderAmountForOnline;
 
   PaymentSettingsModel({
@@ -12,6 +14,8 @@ class PaymentSettingsModel {
     required this.cashfree,
     required this.phonepe,
     required this.codEnabled,
+    required this.walletEnabled,
+    required this.upiEnabled,
     required this.minOrderAmountForOnline,
   });
 
@@ -22,6 +26,8 @@ class PaymentSettingsModel {
       cashfree: GatewayConfig.empty(),
       phonepe: GatewayConfig.empty(),
       codEnabled: true,
+      walletEnabled: true,
+      upiEnabled: true,
       minOrderAmountForOnline: 0.0,
     );
   }
@@ -32,7 +38,9 @@ class PaymentSettingsModel {
       stripe: GatewayConfig.fromJson(Map<String, dynamic>.from(json['stripe'] ?? {})),
       cashfree: GatewayConfig.fromJson(Map<String, dynamic>.from(json['cashfree'] ?? {})),
       phonepe: GatewayConfig.fromJson(Map<String, dynamic>.from(json['phonepe'] ?? {})),
-      codEnabled: json['codEnabled'] ?? true,
+      codEnabled: json['codEnabled'] == true || json['codEnabled'] == 'true',
+      walletEnabled: json['walletEnabled'] == true || json['walletEnabled'] == 'true',
+      upiEnabled: json['upiEnabled'] == true || json['upiEnabled'] == 'true',
       minOrderAmountForOnline: (json['minOrderAmountForOnline'] as num?)?.toDouble() ?? 0.0,
     );
   }
@@ -44,8 +52,32 @@ class PaymentSettingsModel {
       'cashfree': cashfree.toJson(),
       'phonepe': phonepe.toJson(),
       'codEnabled': codEnabled,
+      'walletEnabled': walletEnabled,
+      'upiEnabled': upiEnabled,
       'minOrderAmountForOnline': minOrderAmountForOnline,
     };
+  }
+
+  PaymentSettingsModel copyWith({
+    GatewayConfig? razorpay,
+    GatewayConfig? stripe,
+    GatewayConfig? cashfree,
+    GatewayConfig? phonepe,
+    bool? codEnabled,
+    bool? walletEnabled,
+    bool? upiEnabled,
+    double? minOrderAmountForOnline,
+  }) {
+    return PaymentSettingsModel(
+      razorpay: razorpay ?? this.razorpay,
+      stripe: stripe ?? this.stripe,
+      cashfree: cashfree ?? this.cashfree,
+      phonepe: phonepe ?? this.phonepe,
+      codEnabled: codEnabled ?? this.codEnabled,
+      walletEnabled: walletEnabled ?? this.walletEnabled,
+      upiEnabled: upiEnabled ?? this.upiEnabled,
+      minOrderAmountForOnline: minOrderAmountForOnline ?? this.minOrderAmountForOnline,
+    );
   }
 }
 
